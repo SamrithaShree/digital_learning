@@ -1,5 +1,4 @@
-venv/
-.venv/
+digital_learning_backend/venv/
 __pycache__/
 *.pyc
 .env
