@@ -25,13 +25,12 @@ class TeacherSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'subject', 'school']
 
 class QuestionSerializer(serializers.ModelSerializer):
-    options = serializers.JSONField()
-    
     class Meta:
         model = Question
         fields = ['id', 'subject', 'text_en', 'text_pa', 'options', 'correct_answer']
+        # Hide the correct answer from the API response
         extra_kwargs = {
-            'correct_answer': {'write_only': True}  # Hide correct answer in responses
+            'correct_answer': {'write_only': True}
         }
 
 class QuizSerializer(serializers.ModelSerializer):
@@ -43,12 +42,10 @@ class QuizSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'subject', 'created_by', 'created_at', 'questions']
 
 class QuizAttemptSerializer(serializers.ModelSerializer):
-    answers = serializers.JSONField()
-    
     class Meta:
         model = QuizAttempt
-        fields = ['student', 'quiz', 'answers', 'score', 'completed_at']
-        read_only_fields = ['score', 'completed_at']
+        fields = ['student', 'quiz', 'attempt_number', 'answers', 'score', 'completed_at']
+        read_only_fields = ['score', 'completed_at', 'attempt_number']
 
 class BadgeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -63,13 +60,15 @@ class StudentBadgeSerializer(serializers.ModelSerializer):
         fields = ['badge', 'awarded_at']
 
 class StudentProgressSerializer(serializers.ModelSerializer):
-    badges = StudentBadgeSerializer(source='studentbadge_set', many=True, read_only=True)
-    quiz_attempts = QuizAttemptSerializer(source='quizattempt_set', many=True, read_only=True)
-    user = UserSerializer(read_only=True)
-    
+    """
+    Custom serializer for the Teacher Dashboard.
+    """
+    student_name = serializers.CharField(source='student.user.get_full_name')
+    badges = StudentBadgeSerializer(source='student.studentbadge_set', many=True, read_only=True)
+
     class Meta:
-        model = Student
-        fields = ['id', 'user', 'grade', 'school', 'badges', 'quiz_attempts']
+        model = QuizAttempt
+        fields = ['student_name', 'score', 'completed_at', 'badges']
 
 class ErrorSerializer(serializers.Serializer):
     error = serializers.CharField()

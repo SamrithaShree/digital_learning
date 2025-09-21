@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth.models import User
-from .models import Quiz, Question, Student, Teacher, QuizAttempt
+from .models import Quiz, Question, Student, Teacher, QuizAttempt, Badge, StudentBadge
 
 class QuizAPITests(TestCase):
     def setUp(self):
@@ -57,6 +57,9 @@ class QuizAPITests(TestCase):
                 subject='Science'
             )
         ]
+        
+        # Create a badge for testing
+        self.badge = Badge.objects.create(name='Perfect Score', description='Achieved 100%')
 
         self.client = APIClient()
 
@@ -73,7 +76,7 @@ class QuizAPITests(TestCase):
     def test_quiz_list(self):
         """Test quiz listing"""
         self.client.force_authenticate(user=self.teacher)
-        response = self.client.get('/api/quiz/')
+        response = self.client.get('/api/quizzes/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('quizzes', response.data)
@@ -81,7 +84,7 @@ class QuizAPITests(TestCase):
     def test_quiz_detail(self):
         """Test single quiz retrieval"""
         self.client.force_authenticate(user=self.teacher)
-        response = self.client.get(f'/api/quiz/{self.quiz.id}/')
+        response = self.client.get(f'/api/quizzes/{self.quiz.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['name'], 'Test Science Quiz')
@@ -99,18 +102,21 @@ class QuizAPITests(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['score'], 100.0)
+        
+        # Check if the badge was awarded
+        self.assertTrue(StudentBadge.objects.filter(student=self.student_profile, badge=self.badge).exists())
 
     def test_teacher_dashboard(self):
         """Test teacher dashboard access"""
         self.client.force_authenticate(user=self.teacher)
-        response = self.client.get('/api/quiz/dashboard/')
+        response = self.client.get('/api/dashboard/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_export_progress(self):
         """Test progress export"""
         self.client.force_authenticate(user=self.teacher)
-        response = self.client.get('/api/quiz/export/')
+        response = self.client.get('/api/export/')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'text/csv')

@@ -6,6 +6,9 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+import csv
+from django.http import HttpResponse
+
 from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge
 from .serializers import (
     QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer,
@@ -65,11 +68,6 @@ class QuizViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        # Add debugging information
-        print(f"Found {queryset.count()} quizzes")
-        for quiz in queryset:
-            print(f"Quiz '{quiz.name}' has {quiz.questions.count()} questions")
-            
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'quizzes': serializer.data
@@ -85,46 +83,48 @@ class QuizSubmissionView(APIView):
         try:
             quiz_id = request.data.get('quiz_id')
             answers = request.data.get('answers', {})
-            
-            quiz = Quiz.objects.get(id=quiz_id)
+
+            quiz = get_object_or_404(Quiz, id=quiz_id)
             student = request.user.student
-            
+
             # Calculate score
             correct_count = 0
             total_questions = quiz.questions.count()
-            
+
             for question in quiz.questions.all():
                 student_answer = answers.get(str(question.id))
                 if student_answer and student_answer == question.correct_answer:
                     correct_count += 1
-            
+
             score = (correct_count / total_questions * 100) if total_questions > 0 else 0
-            
-            # Create new attempt without specifying attempt_number
-            attempt = QuizAttempt.objects.create(
+
+            # Create new attempt and let the model handle attempt_number
+            attempt = QuizAttempt(
                 student=student,
                 quiz=quiz,
                 answers=answers,
                 score=score
             )
-            
+            attempt.save() # This will call the custom save method
+
+            # Award badges
+            if score == 100:
+                badge, _ = Badge.objects.get_or_create(name='Perfect Score')
+                StudentBadge.objects.get_or_create(student=student, badge=badge)
+
             return Response({
                 'attempt_number': attempt.attempt_number,
                 'score': score,
                 'correct_answers': correct_count,
                 'total_questions': total_questions,
-                'previous_attempts': QuizAttempt.objects.filter(
-                    student=student,
-                    quiz=quiz
-                ).count()
             }, status=status.HTTP_201_CREATED)
-            
+
         except Exception as e:
             return Response(
-                {'error': str(e)}, 
+                {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
+        
 class TeacherDashboardView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -136,23 +136,14 @@ class TeacherDashboardView(APIView):
             )
         
         quiz_id = request.query_params.get('quiz_id')
-        queryset = QuizAttempt.objects.all()
+        # Use prefetch_related to optimize queries
+        queryset = QuizAttempt.objects.select_related('student__user').prefetch_related('student__studentbadge_set__badge').all()
         
         if quiz_id:
             queryset = queryset.filter(quiz_id=quiz_id)
         
-        student_progress = []
-        for attempt in queryset:
-            badges = [badge.name for badge in attempt.student.studentbadge_set.all()]
-            progress = {
-                'student_name': attempt.student.user.get_full_name(),
-                'score': attempt.score,
-                'badges': badges,
-                'progress': attempt.score / 10.0  # Convert score to progress percentage
-            }
-            student_progress.append(progress)
-        
-        return Response(student_progress)
+        serializer = StudentProgressSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -162,26 +153,24 @@ def export_progress(request):
             {'error': 'Only teachers can access this endpoint'},
             status=status.HTTP_403_FORBIDDEN
         )
-    
-    # This is a placeholder for CSV generation
-    # In a real implementation, you would use Django's CSV writing capabilities
-    return Response({
-        'message': 'Export functionality will be implemented here'
-    })
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def debug_quiz_data(request):
-    quizzes = Quiz.objects.all()
-    quiz_data = []
-    for quiz in quizzes:
-        quiz_data.append({
-            'id': quiz.id,
-            'name': quiz.name,
-            'question_count': quiz.questions.count(),
-            'created_by': quiz.created_by.user.username if quiz.created_by else None
-        })
-    return Response({
-        'quiz_count': len(quiz_data),
-        'quizzes': quiz_data
-    })
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="student_progress.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Student', 'Quiz', 'Score', 'Completed At'])
+
+    quiz_id = request.query_params.get('quiz_id')
+    queryset = QuizAttempt.objects.all()
+    if quiz_id:
+        queryset = queryset.filter(quiz_id=quiz_id)
+
+    for attempt in queryset:
+        writer.writerow([
+            attempt.student.user.get_full_name(),
+            attempt.quiz.name,
+            attempt.score,
+            attempt.completed_at.strftime('%Y-%m-%d %H:%M:%S')
+        ])
+
+    return response
