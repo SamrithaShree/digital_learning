@@ -24,6 +24,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('quiz.urls')),  # This will include all quiz URLs under /api/
     path('api-auth/', include('rest_framework.urls')),
-    path('api/auth/login/', views.obtain_auth_token),
+    # path('api/auth/login/', views.obtain_auth_token),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

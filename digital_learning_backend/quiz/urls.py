@@ -18,6 +18,6 @@ urlpatterns = [
     # Corrected URL patterns to match the tests
     path('dashboard/', TeacherDashboardView.as_view(), name='teacher-dashboard'),
     path('export/', export_progress, name='export-progress'),
-    path('auth/login/', login_view, name='login'),
-    path('auth/logout/', logout_view, name='logout'),
+    path('auth/login/', login_view, name='api-login'),
+    path('auth/logout/', logout_view, name='api-logout'),
 ]

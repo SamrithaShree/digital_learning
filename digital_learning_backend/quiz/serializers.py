@@ -28,7 +28,6 @@ class QuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
         fields = ['id', 'subject', 'text_en', 'text_pa', 'options', 'correct_answer']
-        # Hide the correct answer from the API response
         extra_kwargs = {
             'correct_answer': {'write_only': True}
         }
@@ -72,3 +71,44 @@ class StudentProgressSerializer(serializers.ModelSerializer):
 
 class ErrorSerializer(serializers.Serializer):
     error = serializers.CharField()
+
+# --- ADDED FOR NEW FEATURES ---
+
+class MyProgressSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the logged-in student's own progress view.
+    """
+    quiz_attempts = QuizAttemptSerializer(many=True, read_only=True, source='quizattempt_set')
+    badges = StudentBadgeSerializer(many=True, read_only=True, source='studentbadge_set')
+
+    class Meta:
+        model = Student
+        fields = ['quiz_attempts', 'badges']
+
+class StudentRegistrationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for handling new student registration.
+    """
+    password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'password', 'email', 'first_name', 'last_name')
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            password=validated_data['password'],
+            email=validated_data.get('email', ''),
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name']
+        )
+        # Automatically create a Student profile for the new user
+        Student.objects.create(
+            user=user,
+            grade='default', # You can adjust these defaults
+            school='default'
+        )
+        return user
