@@ -19,6 +19,7 @@ from .serializers import (
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def login_view(request):
+    print("LOGIN ATTEMPT:", request.data)
     username = request.data.get('username')
     password = request.data.get('password')
     
