@@ -68,6 +68,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'backend.urls'
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # The default port for React/Next.js
+    "http://127.0.0.1:3000",
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
