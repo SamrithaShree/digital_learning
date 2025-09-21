@@ -46,25 +46,40 @@ class Question(models.Model):
         return f"{self.quiz.name} - Question {self.id}"
 
 class QuizAttempt(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
-    answers = models.JSONField()  # Store answers as JSON: {"question_id": "selected_answer"}
-    score = models.IntegerField()
+    student = models.ForeignKey('Student', on_delete=models.CASCADE)
+    quiz = models.ForeignKey('Quiz', on_delete=models.CASCADE)
+    attempt_number = models.PositiveIntegerField()
+    answers = models.JSONField()
+    score = models.FloatField(default=0)
     completed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ['student', 'quiz']  # One attempt per quiz per student
+        ordering = ['-completed_at']
+        unique_together = ['student', 'quiz', 'attempt_number']
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.attempt_number:  # Only for new instances
+            # Get the highest attempt number for this student and quiz
+            last_attempt = QuizAttempt.objects.filter(
+                student=self.student,
+                quiz=self.quiz
+            ).order_by('-attempt_number').first()
+            
+            self.attempt_number = (last_attempt.attempt_number + 1) if last_attempt else 1
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.student.user.username} - {self.quiz.name}"
 
 class StudentBadge(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    badge = models.ForeignKey(Badge, on_delete=models.CASCADE)
+    student = models.ForeignKey('Student', on_delete=models.CASCADE)
+    badge = models.ForeignKey('Badge', on_delete=models.CASCADE)
     awarded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ['student', 'badge']
+        ordering = ['-awarded_at']
 
     def __str__(self):
         return f"{self.student.user.username} - {self.badge.name}"

@@ -36,13 +36,6 @@ class QuestionSerializer(serializers.ModelSerializer):
 
 class QuizSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = Quiz
-        fields = ['id', 'name', 'questions']
-
-class QuizSerializer(serializers.ModelSerializer):
-    questions = QuestionSerializer(many=True, read_only=True)
     created_by = TeacherSerializer(read_only=True)
     
     class Meta:

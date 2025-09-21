@@ -57,64 +57,73 @@ def logout_view(request):
     return Response({'message': 'Successfully logged out'})
 
 class QuizViewSet(viewsets.ModelViewSet):
-    queryset = Quiz.objects.all()
     serializer_class = QuizSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-    
+
     def get_queryset(self):
-        queryset = super().get_queryset()
-        lang = self.request.query_params.get('lang', 'en')
-        if lang == 'pa':
-            # If Punjabi is requested, only return quizzes with Punjabi translations
-            return queryset.filter(questions__text_pa__isnull=False).distinct()
-        return queryset
+        return Quiz.objects.prefetch_related('questions').all()
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        # Add debugging information
+        print(f"Found {queryset.count()} quizzes")
+        for quiz in queryset:
+            print(f"Quiz '{quiz.name}' has {quiz.questions.count()} questions")
+            
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'quizzes': serializer.data
+        })
 
 class QuizSubmissionView(APIView):
+    """
+    API endpoint for submitting quiz answers
+    """
     permission_classes = [IsAuthenticated]
-    
-    def post(self, request):
-        student = get_object_or_404(Student, user=request.user)
-        quiz = get_object_or_404(Quiz, id=request.data.get('quiz_id'))
-        
-        answers = request.data.get('answers', {})
-        if not answers:
-            return Response(
-                {'error': 'No answers provided'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Calculate score
-        questions = quiz.questions.all()
-        correct_count = 0
-        for question in questions:
-            if str(question.id) in answers:
-                if answers[str(question.id)] == question.correct_answer:
+
+    def post(self, request, *args, **kwargs):
+        try:
+            quiz_id = request.data.get('quiz_id')
+            answers = request.data.get('answers', {})
+            
+            quiz = Quiz.objects.get(id=quiz_id)
+            student = request.user.student
+            
+            # Calculate score
+            correct_count = 0
+            total_questions = quiz.questions.count()
+            
+            for question in quiz.questions.all():
+                student_answer = answers.get(str(question.id))
+                if student_answer and student_answer == question.correct_answer:
                     correct_count += 1
-        
-        score = (correct_count / questions.count()) * 10  # Score out of 10
-        
-        # Save attempt
-        attempt = QuizAttempt.objects.create(
-            student=student,
-            quiz=quiz,
-            answers=answers,
-            score=score
-        )
-        
-        # Award badges based on performance
-        badges = []
-        if score == 10:
-            badge, created = Badge.objects.get_or_create(
-                name='Perfect Score',
-                defaults={'description': 'Achieved a perfect score in a quiz!'}
+            
+            score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+            
+            # Create new attempt without specifying attempt_number
+            attempt = QuizAttempt.objects.create(
+                student=student,
+                quiz=quiz,
+                answers=answers,
+                score=score
             )
-            StudentBadge.objects.get_or_create(student=student, badge=badge)
-            badges.append(badge.name)
-        
-        return Response({
-            'score': score,
-            'badges': badges
-        })
+            
+            return Response({
+                'attempt_number': attempt.attempt_number,
+                'score': score,
+                'correct_answers': correct_count,
+                'total_questions': total_questions,
+                'previous_attempts': QuizAttempt.objects.filter(
+                    student=student,
+                    quiz=quiz
+                ).count()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class TeacherDashboardView(APIView):
     permission_classes = [IsAuthenticated]
@@ -158,4 +167,21 @@ def export_progress(request):
     # In a real implementation, you would use Django's CSV writing capabilities
     return Response({
         'message': 'Export functionality will be implemented here'
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def debug_quiz_data(request):
+    quizzes = Quiz.objects.all()
+    quiz_data = []
+    for quiz in quizzes:
+        quiz_data.append({
+            'id': quiz.id,
+            'name': quiz.name,
+            'question_count': quiz.questions.count(),
+            'created_by': quiz.created_by.user.username if quiz.created_by else None
+        })
+    return Response({
+        'quiz_count': len(quiz_data),
+        'quizzes': quiz_data
     })

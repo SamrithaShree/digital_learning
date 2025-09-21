@@ -14,35 +14,15 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-# from django.contrib import admin
-# from django.urls import path, include
-
-# urlpatterns = [
-#     path('admin/', admin.site.urls),
-#     path('api/', include('quiz.urls')),
-# ]
-from rest_framework.authtoken import views
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
-
-def api_home(request):
-    return JsonResponse({
-        'status': 'online',
-        'message': 'Digital Learning Platform Backend',
-        'endpoints': {
-            'admin': '/admin/',
-            'quiz': '/api/quiz/',
-            'auth': '/api/auth/login/'
-        }
-    })
+from rest_framework.authtoken import views
 
 urlpatterns = [
-    path('', api_home, name='api_home'),  # Fix for root URL
     path('admin/', admin.site.urls),
-    path('api/quiz/', include('quiz.urls')),
+    path('api/', include('quiz.urls')),  # This will include all quiz URLs under /api/
     path('api/auth/login/', views.obtain_auth_token),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

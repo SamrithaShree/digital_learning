@@ -12,14 +12,14 @@
 # ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
+from .views import QuizViewSet, QuizSubmissionView, TeacherDashboardView, export_progress
 
-# Create router for any viewsets you have
 router = DefaultRouter()
+router.register('quiz', QuizViewSet, basename='quiz')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('auth/login/', views.login_view, name='quiz_login'),
-    path('submit/', views.QuizSubmissionView.as_view(), name='quiz_submit') if hasattr(views, 'QuizSubmissionView') else path('', views.login_view),
-    path('dashboard/', views.TeacherDashboardView.as_view(), name='dashboard') if hasattr(views, 'TeacherDashboardView') else path('', views.login_view),
+    path('submit/', QuizSubmissionView.as_view(), name='quiz-submit'),
+    path('quiz/dashboard/', TeacherDashboardView.as_view(), name='teacher-dashboard'),
+    path('quiz/export/', export_progress, name='export-progress'),
 ]
