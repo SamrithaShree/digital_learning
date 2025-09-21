@@ -9,79 +9,93 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/use-toast"
 import {
-  BookOpen,
-  Trophy,
-  Star,
-  Play,
-  CheckCircle,
-  Clock,
-  Wifi,
-  WifiOff,
-  User,
-  Award,
-  Target,
-  Download,
-  HelpCircle,
+  BookOpen, Trophy, Star, Play, CheckCircle, Clock, Wifi, WifiOff,
+  User, Award, Target, Download, HelpCircle
 } from "lucide-react"
+import { NavigationHeader } from "./navigation-header"
 
+// Types for data from our backend
 interface Quiz {
-  id: number
-  name: string
-  subject: string
-  questions: any[]
+  id: number;
+  name: string;
+  subject: string;
+  questions: any[];
+}
+
+interface QuizAttempt {
+  quiz: number;
+  score: number;
+}
+
+interface StudentBadge {
+  badge: { name: string; };
+}
+
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+  progress: number;
 }
 
 export function StudentDashboard() {
-  const [language, setLanguage] = useState<"en" | "hi" | "pa">("en")
-  const [isOffline, setIsOffline] = useState(false)
-  const [quizzes, setQuizzes] = useState<Quiz[]>([])
-  const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
-  const router = useRouter()
+  const [language, setLanguage] = useState<"en" | "hi" | "pa">("en");
+  const [isOffline, setIsOffline] = useState(false);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
+  const [badges, setBadges] = useState<StudentBadge[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
-    const fetchQuizzes = async () => {
+    const fetchData = async () => {
       try {
-        const response = await api.get('/quizzes/');
-        setQuizzes(response.data.quizzes);
+        const [quizzesRes, progressRes] = await Promise.all([
+          api.get('/quizzes/'),
+          api.get('/my-progress/')
+        ]);
+        setQuizzes(quizzesRes.data.quizzes);
+        setQuizAttempts(progressRes.data.quiz_attempts);
+        setBadges(progressRes.data.badges);
+        setAchievements([
+          { id: '1', title: 'First Steps', description: 'Complete your first quiz.', icon: '👟', earned: quizAttempts.length > 0, progress: quizAttempts.length > 0 ? 100 : 0 },
+          { id: '2', title: 'Digital Explorer', description: 'Complete 5 quizzes.', icon: '🧭', earned: quizAttempts.length >= 5, progress: (quizAttempts.length / 5) * 100 }
+        ]);
       } catch (error) {
-        console.error("Failed to fetch quizzes:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load quizzes. Please try again.",
-          variant: "destructive",
-        })
+        console.error("Failed to fetch dashboard data:", error);
+        toast({ title: "Error", description: "Failed to load dashboard. Please try again.", variant: "destructive" });
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchQuizzes();
+    fetchData();
 
-    const handleOnline = () => setIsOffline(false)
-    const handleOffline = () => setIsOffline(true)
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [toast, quizAttempts.length]);
 
   const handleQuizAction = (quizId: number) => {
     router.push(`/quiz/${quizId}`);
-  }
+  };
 
   const getText = (en: string, hi: string, pa: string) => {
-    switch (language) {
-      case "hi":
-        return hi
-      case "pa":
-        return pa
-      default:
-        return en
-    }
-  }
+    return language === "hi" ? hi : language === "pa" ? pa : en;
+  };
+
+  const completedQuizzesCount = new Set(quizAttempts.map(a => a.quiz)).size;
+  const totalQuizzes = quizzes.length;
+  const progressPercentage = totalQuizzes > 0 ? (completedQuizzesCount / totalQuizzes) * 100 : 0;
 
   if (loading) {
     return (
@@ -96,116 +110,331 @@ export function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-balance">
-                  {getText("Digital Learning", "डिजिटल शिक्षा", "ਡਿਜੀਟਲ ਸਿੱਖਿਆ")}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {getText("Learn at your own pace", "अपनी गति से सीखें", "ਆਪਣੀ ਰਫਤਾਰ ਨਾਲ ਸਿੱਖੋ")}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex bg-muted rounded-lg p-1">
-                {(["en", "hi", "pa"] as const).map((lang) => (
-                  <Button
-                    key={lang}
-                    variant={language === lang ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setLanguage(lang)}
-                    className="text-xs px-3"
-                  >
-                    {lang === "en" ? "EN" : lang === "hi" ? "हि" : "ਪਾ"}
-                  </Button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                {isOffline ? (
-                  <WifiOff className="w-4 h-4 text-muted-foreground" />
-                ) : (
-                  <Wifi className="w-4 h-4 text-success" />
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {isOffline ? getText("Offline", "ऑफ़लाइन", "ਔਫਲਾਈਨ") : getText("Online", "ऑनलाइन", "ਔਨਲਾਈਨ")}
-                </span>
-              </div>
-              <Button variant="ghost" size="sm" className="gap-2" onClick={() => router.push("/profile")}>
-                <User className="w-4 h-4" />
-                <span className="hidden sm:inline">{getText("Profile", "प्रोफ़ाइल", "ਪ੍ਰੋਫਾਈਲ")}</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <NavigationHeader title={getText("Digital Learning", "डिजिटल शिक्षा", "ਡਿਜੀਟਲ ਸਿੱਖਿਆ")} showBack={false} showLogout={true} />
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium">
-            <Star className="w-4 h-4" />
-            {getText("Welcome back!", "वापस स्वागत है!", "ਵਾਪਸ ਜੀ ਆਇਆਂ ਨੂੰ!")}
-          </div>
-          <h2 className="text-2xl font-bold text-balance">
-            {getText("Test Your Knowledge", "अपने ज्ञान का परीक्षण करें", "ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ")}
-          </h2>
-        </div>
+        <Card className="bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              {getText("Your Progress", "आपकी प्रगति", "ਤੁਹਾਡੀ ਤਰੱਕੀ")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {getText("Quizzes Completed", "पूरे किए गए क्विज़", "ਪੂਰੇ ਕੀਤੇ ਕਵਿਜ਼")}
+              </span>
+              <span className="font-semibold">
+                {completedQuizzesCount}/{totalQuizzes}
+              </span>
+            </div>
+            <Progress value={progressPercentage} className="h-3" />
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                {Math.round(progressPercentage)}% {getText("Complete", "पूर्ण", "ਪੂਰਾ")}
+              </span>
+              <div className="flex items-center gap-1 text-primary">
+                <Trophy className="w-4 h-4" />
+                <span>
+                  {badges.length} {getText("Badges", "बैज", "ਬੈਜ")}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Quizzes Grid */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary" />
             {getText("Available Quizzes", "उपलब्ध क्विज़", "ਉਪਲਬਧ ਕਵਿਜ਼")}
           </h3>
-
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {quizzes.map((quiz) => (
+            {quizzes.map((quiz) => {
+              const hasAttempted = quizAttempts.some(a => a.quiz === quiz.id);
+              return (
+                <Card
+                  key={quiz.id}
+                  className={`cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${hasAttempted ? "bg-success/5 border-success/20" : "hover:border-primary/50"}`}
+                  onClick={() => handleQuizAction(quiz.id)}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1">
+                        <CardTitle className="text-base text-balance">{quiz.name}</CardTitle>
+                        <Badge variant="secondary" className="text-xs">{quiz.subject}</Badge>
+                      </div>
+                      {hasAttempted ? (
+                        <CheckCircle className="w-6 h-6 text-success" />
+                      ) : (
+                        <Play className="w-6 h-6 text-primary" />
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <p className="text-sm text-muted-foreground mb-3 text-pretty">
+                      {getText(
+                        `This quiz has ${quiz.questions.length} questions.`,
+                        `इस क्विज़ में ${quiz.questions.length} प्रश्न हैं।`,
+                        `ਇਸ ਕਵਿਜ਼ ਵਿੱਚ ${quiz.questions.length} ਸਵਾਲ ਹਨ।`
+                      )}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        {`${quiz.questions.length * 0.5} min`}
+                      </div>
+                      <Button size="sm" variant={hasAttempted ? "secondary" : "default"}>
+                        {hasAttempted ? getText("Retake", "फिर से दें", "ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ") : getText("Start", "शुरू करें", "ਸ਼ੁਰੂ ਕਰੋ")}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Award className="w-5 h-5 text-accent" />
+            {getText("Your Achievements", "आपकी उपलब्धियां", "ਤੁਹਾਡੀਆਂ ਪ੍ਰਾਪਤੀਆਂ")}
+          </h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {achievements.map((achievement) => (
               <Card
-                key={quiz.id}
-                className="cursor-pointer transition-all hover:shadow-lg hover:scale-105 hover:border-primary/50"
-                onClick={() => handleQuizAction(quiz.id)}
+                key={achievement.id}
+                className={`${achievement.earned ? "bg-accent/5 border-accent/20" : "opacity-60"}`}
               >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1 flex-1">
-                      <CardTitle className="text-base text-balance">{quiz.name}</CardTitle>
-                      <Badge variant="secondary" className="text-xs">{quiz.subject}</Badge>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl">{achievement.icon}</div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-sm text-balance">{achievement.title}</h4>
+                      <p className="text-xs text-muted-foreground text-pretty">{achievement.description}</p>
+                      {!achievement.earned && achievement.progress > 0 && (
+                        <Progress value={achievement.progress} className="h-1 mt-2" />
+                      )}
                     </div>
-                    <Play className="w-6 h-6 text-primary" />
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="text-sm text-muted-foreground mb-3 text-pretty">
-                    {`This quiz has ${quiz.questions.length} questions.`}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      {/* Placeholder for duration */}
-                      {`${quiz.questions.length * 0.5} min`}
-                    </div>
-                    <Button size="sm" variant="default">
-                      {getText("Start", "शुरू करें", "ਸ਼ੁਰੂ ਕਰੋ")}
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         </div>
-
-        {/* Quick Actions and other sections remain the same */}
-        {/* ... */}
       </main>
     </div>
   )
 }
+
+// "use client"
+
+// import { useState, useEffect } from "react"
+// import { useRouter } from "next/navigation"
+// import api from "@/lib/api"
+// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+// import { Button } from "@/components/ui/button"
+// import { Badge } from "@/components/ui/badge"
+// import { Progress } from "@/components/ui/progress"
+// import { useToast } from "@/hooks/use-toast"
+// import {
+//   BookOpen,
+//   Trophy,
+//   Star,
+//   Play,
+//   CheckCircle,
+//   Clock,
+//   Wifi,
+//   WifiOff,
+//   User,
+//   Award,
+//   Target,
+//   Download,
+//   HelpCircle,
+// } from "lucide-react"
+
+// interface Quiz {
+//   id: number
+//   name: string
+//   subject: string
+//   questions: any[]
+// }
+
+// export function StudentDashboard() {
+//   const [language, setLanguage] = useState<"en" | "hi" | "pa">("en")
+//   const [isOffline, setIsOffline] = useState(false)
+//   const [quizzes, setQuizzes] = useState<Quiz[]>([])
+//   const [loading, setLoading] = useState(true)
+//   const { toast } = useToast()
+//   const router = useRouter()
+
+//   useEffect(() => {
+//     const fetchQuizzes = async () => {
+//       try {
+//         const response = await api.get('/quizzes/');
+//         setQuizzes(response.data.quizzes);
+//       } catch (error) {
+//         console.error("Failed to fetch quizzes:", error)
+//         toast({
+//           title: "Error",
+//           description: "Failed to load quizzes. Please try again.",
+//           variant: "destructive",
+//         })
+//       } finally {
+//         setLoading(false)
+//       }
+//     }
+
+//     fetchQuizzes();
+
+//     const handleOnline = () => setIsOffline(false)
+//     const handleOffline = () => setIsOffline(true)
+//     window.addEventListener("online", handleOnline)
+//     window.addEventListener("offline", handleOffline)
+//     return () => {
+//       window.removeEventListener("online", handleOnline)
+//       window.removeEventListener("offline", handleOffline)
+//     }
+//   }, [])
+
+//   const handleQuizAction = (quizId: number) => {
+//     router.push(`/quiz/${quizId}`);
+//   }
+
+//   const getText = (en: string, hi: string, pa: string) => {
+//     switch (language) {
+//       case "hi":
+//         return hi
+//       case "pa":
+//         return pa
+//       default:
+//         return en
+//     }
+//   }
+
+//   if (loading) {
+//     return (
+//       <div className="min-h-screen bg-background flex items-center justify-center">
+//         <div className="text-center space-y-4">
+//           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+//           <p className="text-muted-foreground">Loading your learning dashboard...</p>
+//         </div>
+//       </div>
+//     )
+//   }
+
+//   return (
+//     <div className="min-h-screen bg-background">
+//       {/* Header */}
+//       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+//         <div className="container mx-auto px-4 py-4">
+//           <div className="flex items-center justify-between">
+//             <div className="flex items-center gap-3">
+//               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+//                 <BookOpen className="w-6 h-6 text-primary-foreground" />
+//               </div>
+//               <div>
+//                 <h1 className="text-xl font-bold text-balance">
+//                   {getText("Digital Learning", "डिजिटल शिक्षा", "ਡਿਜੀਟਲ ਸਿੱਖਿਆ")}
+//                 </h1>
+//                 <p className="text-sm text-muted-foreground">
+//                   {getText("Learn at your own pace", "अपनी गति से सीखें", "ਆਪਣੀ ਰਫਤਾਰ ਨਾਲ ਸਿੱਖੋ")}
+//                 </p>
+//               </div>
+//             </div>
+//             <div className="flex items-center gap-3">
+//               <div className="flex bg-muted rounded-lg p-1">
+//                 {(["en", "hi", "pa"] as const).map((lang) => (
+//                   <Button
+//                     key={lang}
+//                     variant={language === lang ? "default" : "ghost"}
+//                     size="sm"
+//                     onClick={() => setLanguage(lang)}
+//                     className="text-xs px-3"
+//                   >
+//                     {lang === "en" ? "EN" : lang === "hi" ? "हि" : "ਪਾ"}
+//                   </Button>
+//                 ))}
+//               </div>
+//               <div className="flex items-center gap-2">
+//                 {isOffline ? (
+//                   <WifiOff className="w-4 h-4 text-muted-foreground" />
+//                 ) : (
+//                   <Wifi className="w-4 h-4 text-success" />
+//                 )}
+//                 <span className="text-xs text-muted-foreground">
+//                   {isOffline ? getText("Offline", "ऑफ़लाइन", "ਔਫਲਾਈਨ") : getText("Online", "ऑनलाइन", "ਔਨਲਾਈਨ")}
+//                 </span>
+//               </div>
+//               <Button variant="ghost" size="sm" className="gap-2" onClick={() => router.push("/profile")}>
+//                 <User className="w-4 h-4" />
+//                 <span className="hidden sm:inline">{getText("Profile", "प्रोफ़ाइल", "ਪ੍ਰੋਫਾਈਲ")}</span>
+//               </Button>
+//             </div>
+//           </div>
+//         </div>
+//       </header>
+
+//       <main className="container mx-auto px-4 py-6 space-y-6">
+//         <div className="text-center space-y-4">
+//           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium">
+//             <Star className="w-4 h-4" />
+//             {getText("Welcome back!", "वापस स्वागत है!", "ਵਾਪਸ ਜੀ ਆਇਆਂ ਨੂੰ!")}
+//           </div>
+//           <h2 className="text-2xl font-bold text-balance">
+//             {getText("Test Your Knowledge", "अपने ज्ञान का परीक्षण करें", "ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ")}
+//           </h2>
+//         </div>
+
+//         {/* Quizzes Grid */}
+//         <div className="space-y-4">
+//           <h3 className="text-lg font-semibold flex items-center gap-2">
+//             <BookOpen className="w-5 h-5 text-primary" />
+//             {getText("Available Quizzes", "उपलब्ध क्विज़", "ਉਪਲਬਧ ਕਵਿਜ਼")}
+//           </h3>
+
+//           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+//             {quizzes.map((quiz) => (
+//               <Card
+//                 key={quiz.id}
+//                 className="cursor-pointer transition-all hover:shadow-lg hover:scale-105 hover:border-primary/50"
+//                 onClick={() => handleQuizAction(quiz.id)}
+//               >
+//                 <CardHeader className="pb-3">
+//                   <div className="flex items-start justify-between">
+//                     <div className="space-y-1 flex-1">
+//                       <CardTitle className="text-base text-balance">{quiz.name}</CardTitle>
+//                       <Badge variant="secondary" className="text-xs">{quiz.subject}</Badge>
+//                     </div>
+//                     <Play className="w-6 h-6 text-primary" />
+//                   </div>
+//                 </CardHeader>
+//                 <CardContent className="pt-0">
+//                   <p className="text-sm text-muted-foreground mb-3 text-pretty">
+//                     {`This quiz has ${quiz.questions.length} questions.`}
+//                   </p>
+//                   <div className="flex items-center justify-between">
+//                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
+//                       <Clock className="w-3 h-3" />
+//                       {/* Placeholder for duration */}
+//                       {`${quiz.questions.length * 0.5} min`}
+//                     </div>
+//                     <Button size="sm" variant="default">
+//                       {getText("Start", "शुरू करें", "ਸ਼ੁਰੂ ਕਰੋ")}
+//                     </Button>
+//                   </div>
+//                 </CardContent>
+//               </Card>
+//             ))}
+//           </div>
+//         </div>
+
+//         {/* Quick Actions and other sections remain the same */}
+//         {/* ... */}
+//       </main>
+//     </div>
+//   )
+// }
 
 // "use client"
 
