@@ -393,7 +393,6 @@ export function TeacherDashboard() {
                     {getText("Student Status", "छात्र स्थिति", "ਵਿਦਿਆਰਥੀ ਸਥਿਤੀ")}
                   </CardTitle>
                 </CardHeader>
-                // ...existing code...
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
@@ -419,7 +418,6 @@ export function TeacherDashboard() {
                     </div>
                   </div>
                 </CardContent>
-// ...existing code...
               </Card>
             </div>
             <Card>
