@@ -72,6 +72,12 @@ class QuizViewSet(viewsets.ModelViewSet):
         return Response({
             'quizzes': serializer.data
         })
+    
+    def retrieve(self, request, pk=None):
+        queryset = self.get_queryset()
+        quiz = get_object_or_404(queryset, pk=pk)
+        serializer = self.get_serializer(quiz)
+        return Response(serializer.data)
 
 class QuizSubmissionView(APIView):
     """
