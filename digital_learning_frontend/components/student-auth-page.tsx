@@ -1,5 +1,6 @@
 "use client"
 
+import axios from "axios"
 import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation" // Import useRouter for navigation
@@ -77,7 +78,7 @@ export function StudentAuthPage() {
 
     // --- Login Logic (Connected to your backend) ---
     try {
-      const response = await api.post('/auth/login/', {
+      const response = await axios.post('http://127.0.0.1:8000/api/auth/login/', {
         username: formData.username,
         password: formData.password,
       });
