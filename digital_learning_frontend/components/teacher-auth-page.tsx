@@ -18,7 +18,6 @@ export function TeacherAuthPage() {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
-    // Changed email to username to match the backend
     username: "",
     password: "",
     confirmPassword: "",
@@ -37,20 +36,42 @@ export function TeacherAuthPage() {
       if (formData.password !== formData.confirmPassword) {
         toast({
           title: "Password Mismatch",
-          description: "Passwords do not match. Please try again.",
           variant: "destructive",
         })
         setLoading(false)
         return
       }
-      // NOTE: The backend does not have a registration endpoint yet.
-      // This part will only show a success message for now.
-      toast({
-        title: "Account Submitted!",
-        description: "Your teacher account is pending approval. Please log in once approved.",
-      })
-      setIsLogin(true) // Switch to login form after "signing up"
-      setLoading(false)
+      
+      try {
+        const nameParts = formData.name.split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ');
+
+        // Send the schoolId and teacherId along with other data
+        await api.post('/auth/register/teacher/', {
+            username: formData.username,
+            password: formData.password,
+            first_name: firstName,
+            last_name: lastName,
+            school_id: formData.schoolId, 
+        });
+
+        toast({
+          title: "Account Created!",
+          description: "Your teacher account has been created. Please log in.",
+        })
+        setIsLogin(true) // Switch to login form on success
+      } catch (error: any) {
+        
+        let errorMsg = "An unexpected error occurred. Please try again.";
+        toast({
+            title: "Registration Failed",
+            description: errorMsg,
+            variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
       return
     }
 

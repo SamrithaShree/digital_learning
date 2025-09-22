@@ -5,16 +5,34 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 import csv
 from django.http import HttpResponse
 
 from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge
 from .serializers import (
     QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer,
-    BadgeSerializer, QuizAttemptSerializer, StudentProgressSerializer,
-    UserSerializer, ErrorSerializer
+    BadgeSerializer, QuizAttemptSerializer, StudentProgressSerializer,StudentRegistrationSerializer,
+    TeacherRegistrationSerializer, UserSerializer, MyProgressSerializer, ErrorSerializer
 )
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Anyone can access this page to sign up
+def student_registration_view(request):
+    serializer = StudentRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Anyone can access this page to sign up
+def teacher_registration_view(request):
+    serializer = TeacherRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -53,6 +71,17 @@ def login_view(request):
         'user_info': serializer.data,
         'role': role
     })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_progress_view(request):
+    if not hasattr(request.user, 'student'):
+        return Response({'error': 'Only students can view progress.'}, status=403)
+
+    student = request.user.student
+    serializer = MyProgressSerializer(student)
+    return Response(serializer.data)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

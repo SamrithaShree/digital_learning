@@ -2,6 +2,71 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Quiz, Question, QuizAttempt, Badge, Student, Teacher, StudentBadge
 
+class TeacherRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=True)
+    
+    # ADD THIS: An extra field to accept the school ID from the frontend.
+    # It will not be saved to the database.
+    school_id = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'password', 'email', 'first_name', 'last_name', 'school_id')
+
+    def validate(self, data):
+        
+        
+        SECRET_SCHOOL_ID = "SIH2025" 
+        
+        if data.get('school_id') != SECRET_SCHOOL_ID:
+            raise serializers.ValidationError({"school_id": "Invalid School ID. Teacher registration failed."})
+        
+        return data
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            password=validated_data['password'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            is_staff=True  
+        )
+        Teacher.objects.create(
+            user=user,
+            subject='Not Specified',
+            school='Verified School' 
+        )
+        return user
+
+class StudentRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'password', 'first_name', 'last_name')
+
+    def create(self, validated_data):
+        # Step 1: Create the User object
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            password=validated_data['password'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name']
+        )
+        
+        
+        Student.objects.create(
+            user=user,
+            grade='Not Specified',
+            school='Not Specified'
+        )
+        
+        return user
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -85,30 +150,3 @@ class MyProgressSerializer(serializers.ModelSerializer):
         model = Student
         fields = ['quiz_attempts', 'badges']
 
-class StudentRegistrationSerializer(serializers.ModelSerializer):
-    """
-    Serializer for handling new student registration.
-    """
-    password = serializers.CharField(write_only=True)
-    first_name = serializers.CharField(required=True)
-    last_name = serializers.CharField(required=True)
-
-    class Meta:
-        model = User
-        fields = ('username', 'password', 'email', 'first_name', 'last_name')
-
-    def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            password=validated_data['password'],
-            email=validated_data.get('email', ''),
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name']
-        )
-        # Automatically create a Student profile for the new user
-        Student.objects.create(
-            user=user,
-            grade='default', # You can adjust these defaults
-            school='default'
-        )
-        return user

@@ -41,16 +41,39 @@ export function StudentAuthPage() {
         setLoading(false)
         return
       }
-      // NOTE: The backend does not have a registration endpoint yet.
-      // This part will only show a success message for now.
-      toast({
-        title: "Account Created!",
-        description: "Your student account has been created. Please log in.",
-      })
-      setIsLogin(true) // Switch to login form after "signing up"
-      setLoading(false)
-      return
+      
+      try {
+        // Split the full name into first and last name for the backend
+        const nameParts = formData.name.split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ');
+
+        // Make the API call to the registration endpoint
+        await api.post('/auth/register/', {
+            username: formData.username,
+            password: formData.password,
+            first_name: firstName,
+            last_name: lastName,
+        });
+
+        toast({
+          title: "Account Created!",
+          description: "Your student account has been created. Please log in.",
+        })
+        // Automatically switch to the login form on success
+        setIsLogin(true) 
+      } catch (error) {
+        toast({
+            title: "Registration Failed",
+            description: "That username might already be taken. Please try another one.",
+            variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+      return; // End the function here after handling registration
     }
+
 
     // --- Login Logic (Connected to your backend) ---
     try {
