@@ -1,6 +1,44 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+
+class ClassRoom(models.Model):
+    name = models.CharField(max_length=100)
+    teacher = models.ForeignKey('Teacher', on_delete=models.CASCADE, related_name='classes')
+    students = models.ManyToManyField('Student', through='Enrollment')
+    
+    def student_count(self):
+        return self.students.count()
+    
+    def active_students_count(self):
+        return self.enrollments.filter(active=True).count()
+    
+    def inactive_students_count(self):
+        return self.enrollments.filter(active=False).count()
+
+    def average_progress(self):
+        enrollments = self.enrollments.all()
+        if enrollments:
+            return sum(e.progress for e in enrollments) / enrollments.count()
+        return 0.0
+
+    def __str__(self):
+        return self.name
+
+
+class Enrollment(models.Model):
+    student = models.ForeignKey('Student', on_delete=models.CASCADE, related_name='enrollments')
+    classroom = models.ForeignKey('ClassRoom', on_delete=models.CASCADE, related_name='enrollments')
+    active = models.BooleanField(default=True)
+    progress = models.FloatField(default=0.0)  # Store progress percentage for student in this class
+
+    class Meta:
+        unique_together = ('student', 'classroom')
+
+    def __str__(self):
+        return f"{self.student.user.username} - {self.classroom.name}"
+
+
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     grade = models.CharField(max_length=10)
@@ -9,6 +47,7 @@ class Student(models.Model):
     def __str__(self):
         return self.user.username
 
+
 class Teacher(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     subject = models.CharField(max_length=50)
@@ -16,6 +55,8 @@ class Teacher(models.Model):
 
     def __str__(self):
         return self.user.username
+
+
 
 class Badge(models.Model):
     name = models.CharField(max_length=50)

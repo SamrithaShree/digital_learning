@@ -1,14 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Quiz, Question, QuizAttempt, Badge, Student, Teacher, StudentBadge
+from .models import Quiz, Question, QuizAttempt, Badge, Student, Teacher, StudentBadge, ClassRoom, Enrollment
 
 class TeacherRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
-    
-    # ADD THIS: An extra field to accept the school ID from the frontend.
-    # It will not be saved to the database.
     school_id = serializers.CharField(write_only=True, required=True)
 
     class Meta:
@@ -134,10 +131,39 @@ class StudentProgressSerializer(serializers.ModelSerializer):
         model = QuizAttempt
         fields = ['student_name', 'score', 'completed_at', 'badges']
 
-class ErrorSerializer(serializers.Serializer):
-    error = serializers.CharField()
+class EnrollmentSerializer(serializers.ModelSerializer):
+    student = StudentSerializer(read_only=True)
+    student_id = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all(), write_only=True, source='student')
 
-# --- ADDED FOR NEW FEATURES ---
+    class Meta:
+        model = Enrollment
+        fields = ['id', 'student', 'student_id', 'active', 'progress']
+
+class ClassRoomSerializer(serializers.ModelSerializer):
+    teacher = TeacherSerializer(read_only=True)
+    student_count = serializers.SerializerMethodField()
+    active_students_count = serializers.SerializerMethodField()
+    inactive_students_count = serializers.SerializerMethodField()
+    average_progress = serializers.SerializerMethodField()
+    enrollments = EnrollmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ClassRoom
+        fields = ['id', 'name', 'teacher', 'student_count', 'active_students_count', 'inactive_students_count', 'average_progress', 'enrollments']
+
+
+    # Add these method fields
+    def get_student_count(self, obj):
+        return obj.student_count()
+
+    def get_active_students_count(self, obj):
+        return obj.active_students_count()
+
+    def get_inactive_students_count(self, obj):
+        return obj.inactive_students_count()
+
+    def get_average_progress(self, obj):
+        return obj.average_progress()
 
 class MyProgressSerializer(serializers.ModelSerializer):
     """
@@ -149,4 +175,8 @@ class MyProgressSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = ['quiz_attempts', 'badges']
+
+class ErrorSerializer(serializers.Serializer):
+    error = serializers.CharField()
+
 
