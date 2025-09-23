@@ -29,6 +29,7 @@ import {
   Bell,
   User,
   X,
+  LogOut, // Added this import
 } from "lucide-react"
 import { NavigationHeader } from "./navigation-header"
 
@@ -99,6 +100,33 @@ export function TeacherDashboard() {
 
   const { toast } = useToast()
   const router = useRouter()
+
+  // Add logout function (same as student dashboard)
+  const handleLogout = async () => {
+    setLoading(true)
+    try {
+      await api.post('/auth/logout/')
+      localStorage.removeItem('token')
+      localStorage.removeItem('user_info')
+      localStorage.removeItem('role')
+      toast({ 
+        title: "Logged Out Successfully", 
+        description: "You have been securely logged out." 
+      })
+      router.push('/auth/login')
+    } catch (error) {
+      console.error("Logout error:", error)
+      // Force logout even if API fails
+      localStorage.clear()
+      toast({ 
+        title: "Logged Out", 
+        description: "Session ended successfully." 
+      })
+      router.push('/auth/login')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // MERGED: Fetch student progress data with date filtering (your friend's enhancement)
   useEffect(() => {
@@ -345,6 +373,7 @@ export function TeacherDashboard() {
                 </p>
               </div>
             </div>
+            
             <div className="flex items-center gap-3">
               <div className="flex bg-muted rounded-lg p-1">
                 {(["en", "hi", "pa"] as const).map((lang) => (
@@ -357,10 +386,28 @@ export function TeacherDashboard() {
                 <Bell className="w-4 h-4" />
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-destructive rounded-full"></span>
               </Button>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <User className="w-4 h-4" />
-                <span className="hidden sm:inline">{getText("Teacher Name", "शिक्षक नाम", "ਅਧਿਆਪਕ ਨਾਮ")}</span>
-              </Button>
+              
+              {/* Teacher Profile + Logout (matching student dashboard style) */}
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">{getText("Teacher Profile", "शिक्षक प्रोफ़ाइल", "ਅਧਿਆਪਕ ਪ੍ਰੋਫਾਈਲ")}</span>
+                </Button>
+                
+                {/* Logout Button (exact same style as student dashboard) */}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                  onClick={handleLogout}
+                  disabled={loading}
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">
+                    {loading ? getText("Logging out...", "लॉगआउट हो रहा है...", "ਲਾਗਆਊਟ ਹੋ ਰਿਹਾ ਹੈ...") : getText("Logout", "लॉगआउट", "ਲਾਗਆਊਟ")}
+                  </span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
