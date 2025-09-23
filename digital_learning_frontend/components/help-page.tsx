@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -8,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { NavigationHeader } from "@/components/navigation-header"
 import { Search, Phone, Mail, MessageCircle, Book, Video, Users } from "lucide-react"
 
-export function HelpPage() {
+export function HelpCenter() {
   const [searchQuery, setSearchQuery] = useState("")
   const [language, setLanguage] = useState("english")
   const [isChatOpen, setIsChatOpen] = useState(false)

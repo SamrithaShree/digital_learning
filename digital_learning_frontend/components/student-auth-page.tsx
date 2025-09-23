@@ -95,7 +95,7 @@ export function StudentAuthPage() {
         })
 
         // Redirect to dashboard
-        router.push('/dashboard');
+        router.push('/student/dashboard');
       } else {
         toast({
           title: "Login Error",

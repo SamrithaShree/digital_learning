@@ -136,7 +136,7 @@ export function QuizPage() {
                 <RotateCcw className="h-4 w-4 mr-2" />
                 {getText("Try Again", "ਫਿਰ ਕੋਸ਼ਿਸ਼ ਕਰੋ")}
               </Button>
-              <Button onClick={() => router.push("/dashboard")} className="flex-1 bg-orange-500 hover:bg-orange-600">
+              <Button onClick={() => router.push("/student/dashboard")} className="flex-1 bg-orange-500 hover:bg-orange-600">
                 {getText("Go to Dashboard", "ਡੈਸ਼ਬੋਰਡ 'ਤੇ ਜਾਓ")}
               </Button>
             </div>
@@ -356,7 +356,7 @@ export function QuizPage() {
 //                 <RotateCcw className="h-4 w-4 mr-2" />
 //                 {getText("Try Again", "ਫਿਰ ਕੋਸ਼ਿਸ਼ ਕਰੋ")}
 //               </Button>
-//               <Button onClick={() => router.push("/dashboard")} className="flex-1 bg-orange-500 hover:bg-orange-600">
+//               <Button onClick={() => router.push("/student/dashboard")} className="flex-1 bg-orange-500 hover:bg-orange-600">
 //                 {getText("Go to Dashboard", "ਡੈਸ਼ਬੋਰਡ 'ਤੇ ਜਾਓ")}
 //               </Button>
 //             </div>

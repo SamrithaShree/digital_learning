@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import api from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,72 +22,157 @@ import {
   Target,
   Download,
   HelpCircle,
+  LogOut,
+  Monitor,
+  Code,
+  Brain,
+  ArrowRight,
+  TrendingUp,
 } from "lucide-react"
 
-interface Lesson {
-  id: string
-  title: string
-  titleHi: string
-  titlePa: string
-  description: string
-  descriptionHi: string
-  descriptionPa: string
-  duration: number
-  completed: boolean
-  difficulty: "beginner" | "intermediate" | "advanced"
-  category: string
-  categoryHi: string
-  categoryPa: string
+// Real backend interfaces
+interface QuizAttempt {
+  id: number;
+  quiz: {
+    id: number;
+    name: string;
+  };
+  score: number;
+  completed_at: string;
+  attempt_number: number;
 }
 
-interface Achievement {
-  id: string
-  title: string
-  titleHi: string
-  titlePa: string
-  description: string
-  descriptionHi: string
-  descriptionPa: string
-  icon: string
-  earned: boolean
-  progress: number
+interface StudentBadge {
+  id: number;
+  badge: {
+    id: number;
+    name: string;
+    description: string;
+    icon: string;
+  };
+  earned_at: string;
+}
+
+interface StudentProgress {
+  total_quizzes: number;
+  completed_quizzes: number;
+  average_score: number;
+  recent_attempts: QuizAttempt[];
+  badges: StudentBadge[];
+}
+
+// Learning modules interface
+interface LearningModule {
+  id: string;
+  title: string;
+  titleHi: string;
+  titlePa: string;
+  description: string;
+  descriptionHi: string;
+  descriptionPa: string;
+  icon: React.ReactNode;
+  color: string;
+  path: string;
+  completed: boolean;
+  progress: number;
 }
 
 export function StudentDashboard() {
   const [language, setLanguage] = useState<"en" | "hi" | "pa">("en")
   const [isOffline, setIsOffline] = useState(false)
-  const [lessons, setLessons] = useState<Lesson[]>([])
-  const [achievements, setAchievements] = useState<Achievement[]>([])
   const [loading, setLoading] = useState(true)
+  const [studentProgress, setStudentProgress] = useState<StudentProgress | null>(null)
+  const [currentStudent, setCurrentStudent] = useState<any>(null)
+  
   const { toast } = useToast()
+  const router = useRouter()
+
+  // Learning modules data
+  const learningModules: LearningModule[] = [
+    {
+      id: "digital-literacy",
+      title: "Digital Literacy",
+      titleHi: "डिजिटल साक्षरता",
+      titlePa: "ਡਿਜੀਟਲ ਸਾਖਰਤਾ",
+      description: "Learn essential digital skills and computer basics",
+      descriptionHi: "आवश्यक डिजिटल कौशल और कंप्यूटर की बुनियादी बातें सीखें",
+      descriptionPa: "ਜ਼ਰੂਰੀ ਡਿਜੀਟਲ ਹੁਨਰ ਅਤੇ ਕੰਪਿਊਟਰ ਦੀਆਂ ਬੁਨਿਆਦੀ ਗੱਲਾਂ ਸਿੱਖੋ",
+      icon: <Monitor className="w-8 h-8" />,
+      color: "from-blue-500 to-cyan-500",
+      path: "/student/digital-literacy",
+      completed: false,
+      progress: 0
+    },
+    {
+      id: "stem-languages",
+      title: "STEM Languages",
+      titleHi: "STEM भाषाएं",
+      titlePa: "STEM ਭਾਸ਼ਾਵਾਂ",
+      description: "Explore programming and technical languages",
+      descriptionHi: "प्रोग्रामिंग और तकनीकी भाषाओं का अन्वेषण करें",
+      descriptionPa: "ਪ੍ਰੋਗਰਾਮਿੰਗ ਅਤੇ ਤਕਨੀਕੀ ਭਾਸ਼ਾਵਾਂ ਦੀ ਖੋਜ ਕਰੋ",
+      icon: <Code className="w-8 h-8" />,
+      color: "from-green-500 to-emerald-500",
+      path: "/student/stem-languages",
+      completed: false,
+      progress: 0
+    },
+    {
+      id: "quiz-center",
+      title: "Quiz Center",
+      titleHi: "प्रश्नोत्तरी केंद्र",
+      titlePa: "ਕਵਿਜ਼ ਕੇਂਦਰ",
+      description: "Test your knowledge with interactive quizzes",
+      descriptionHi: "इंटरैक्टिव प्रश्नोत्तरी के साथ अपने ज्ञान का परीक्षण करें",
+      descriptionPa: "ਇੰਟਰਐਕਟਿਵ ਕਵਿਜ਼ਾਂ ਨਾਲ ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ",
+      icon: <Brain className="w-8 h-8" />,
+      color: "from-purple-500 to-pink-500",
+      path: "/quizzes",
+      completed: false,
+      progress: 0
+    }
+  ]
 
   useEffect(() => {
-    fetchLessons()
-    fetchAchievements()
-
-    // Check online status
+    fetchStudentData()
+    checkOnlineStatus()
+    
+    // Online/offline listeners
     const handleOnline = () => setIsOffline(false)
     const handleOffline = () => setIsOffline(true)
-
+    
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
-
+    
     return () => {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
     }
   }, [])
 
-  const fetchLessons = async () => {
+  const checkOnlineStatus = () => {
+    setIsOffline(!navigator.onLine)
+  }
+
+  const fetchStudentData = async () => {
     try {
-      const response = await fetch("/api/lessons")
-      const data = await response.json()
-      setLessons(data)
+      setLoading(true)
+      
+      // Get current student info
+      const userInfo = localStorage.getItem('user_info')
+      if (userInfo) {
+        setCurrentStudent(JSON.parse(userInfo))
+      }
+      
+      // Fetch student progress from backend
+      const response = await api.get('/my-progress/')
+      setStudentProgress(response.data)
+      
     } catch (error) {
-      console.error("Failed to fetch lessons:", error)
+      console.error("Failed to fetch student data:", error)
       toast({
         title: "Error",
-        description: "Failed to load lessons. Please try again.",
+        description: "Could not load your progress data.",
         variant: "destructive",
       })
     } finally {
@@ -93,170 +180,41 @@ export function StudentDashboard() {
     }
   }
 
-  const fetchAchievements = async () => {
-    try {
-      const response = await fetch("/api/achievements")
-      const data = await response.json()
-      setAchievements(data)
-    } catch (error) {
-      console.error("Failed to fetch achievements:", error)
-    }
-  }
-
-  const handleLessonAction = async (lesson: Lesson) => {
-    try {
-      toast({
-        title: getText("Opening lesson...", "पाठ खोला जा रहा है...", "ਪਾਠ ਖੋਲਿਆ ਜਾ ਰਿਹਾ ਹੈ..."),
-        description: getText(
-          lesson.completed ? "Reviewing your completed lesson." : "Loading lesson content.",
-          lesson.completed ? "आपके पूरे किए गए पाठ की समीक्षा।" : "पाठ सामग्री लोड हो रही है।",
-          lesson.completed ? "ਤੁਹਾਡੇ ਪੂਰੇ ਕੀਤੇ ਪਾਠ ਦੀ ਸਮੀਖਿਆ।" : "ਪਾਠ ਸਮੱਗਰੀ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ।",
-        ),
-      })
-
-      setTimeout(() => {
-        window.location.href = `/lessons/${lesson.id}`
-      }, 500)
-    } catch (error) {
-      console.error("Failed to handle lesson action:", error)
-      toast({
-        title: "Error",
-        description: "Failed to process lesson. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const completeLessonManually = async (lessonId: string) => {
-    try {
-      const response = await fetch("/api/lessons", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete", lessonId }),
-      })
-
-      if (response.ok) {
-        setLessons((prev) => prev.map((l) => (l.id === lessonId ? { ...l, completed: true } : l)))
-
-        toast({
-          title: getText("Lesson Completed!", "पाठ पूरा हुआ!", "ਪਾਠ ਪੂਰਾ ਹੋਇਆ!"),
-          description: getText("Great job! Keep learning.", "बहुत बढ़िया! सीखते रहें।", "ਬਹੁਤ ਵਧੀਆ! ਸਿੱਖਦੇ ਰਹੋ।"),
-        })
-
-        checkAchievements()
-      }
-    } catch (error) {
-      console.error("Failed to complete lesson:", error)
-    }
-  }
-
-  const checkAchievements = async () => {
-    const completedCount = lessons.filter((l) => l.completed).length
-
-    // First Steps achievement
-    if (completedCount >= 1) {
-      await updateAchievement("1", 100)
-    }
-
-    // Digital Explorer achievement
-    if (completedCount >= 5) {
-      await updateAchievement("2", 100)
-    } else if (completedCount > 0) {
-      await updateAchievement("2", (completedCount / 5) * 100)
-    }
-  }
-
-  const updateAchievement = async (achievementId: string, progress: number) => {
-    try {
-      const response = await fetch("/api/achievements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ achievementId, progress }),
-      })
-
-      if (response.ok) {
-        const { achievement } = await response.json()
-        setAchievements((prev) => prev.map((a) => (a.id === achievementId ? achievement : a)))
-
-        if (achievement.earned) {
-          toast({
-            title: getText("Achievement Unlocked!", "उपलब्धि अनलॉक!", "ਪ੍ਰਾਪਤੀ ਅਨਲਾਕ!"),
-            description: getText(achievement.title, achievement.titleHi, achievement.titlePa),
-          })
-        }
-      }
-    } catch (error) {
-      console.error("Failed to update achievement:", error)
-    }
-  }
-
-  const handleDownloadLessons = async () => {
+  const handleLogout = async () => {
     setLoading(true)
-
-    toast({
-      title: getText("Downloading...", "डाउनलोड हो रहा है...", "ਡਾਊਨਲੋਡ ਹੋ ਰਿਹਾ ਹੈ..."),
-      description: getText(
-        "Preparing lessons for offline use.",
-        "ऑफ़लाइन उपयोग के लिए पाठ तैयार कर रहे हैं।",
-        "ਔਫਲਾਈਨ ਵਰਤੋਂ ਲਈ ਪਾਠ ਤਿਆਰ ਕਰ ਰਹੇ ਹਾਂ।",
-      ),
-    })
-
     try {
-      const response = await fetch("/api/lessons/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessons: lessons.map((l) => l.id) }),
+      await api.post('/auth/logout/')
+      localStorage.removeItem('token')
+      localStorage.removeItem('user_info')
+      localStorage.removeItem('role')
+      toast({ 
+        title: "Logged Out Successfully", 
+        description: "You have been securely logged out." 
       })
-
-      if (response.ok) {
-        localStorage.setItem("offline_lessons", JSON.stringify(lessons))
-
-        setTimeout(() => {
-          toast({
-            title: getText("Download Complete!", "डाउनलोड पूरा!", "ਡਾਊਨਲੋਡ ਪੂਰਾ!"),
-            description: getText(
-              "Lessons are now available offline.",
-              "पाठ अब ऑफ़लाइन उपलब्ध हैं।",
-              "ਪਾਠ ਹੁਣ ਔਫਲਾਈਨ ਉਪਲਬਧ ਹਨ।",
-            ),
-          })
-          setLoading(false)
-        }, 2000)
-      }
+      router.push('/auth/login')
     } catch (error) {
-      console.error("Download failed:", error)
-      toast({
-        title: "Download Failed",
-        description: "Please check your connection and try again.",
-        variant: "destructive",
+      console.error("Logout error:", error)
+      // Force logout even if API fails
+      localStorage.clear()
+      toast({ 
+        title: "Logged Out", 
+        description: "Session ended successfully." 
       })
+      router.push('/auth/login')
+    } finally {
       setLoading(false)
     }
   }
 
-  const handleTakeQuiz = () => {
-    if (lessons.filter((l) => l.completed).length === 0) {
-      toast({
-        title: getText("Complete Lessons First", "पहले पाठ पूरे करें", "ਪਹਿਲਾਂ ਪਾਠ ਪੂਰੇ ਕਰੋ"),
-        description: getText(
-          "You need to complete at least one lesson to take a quiz.",
-          "क्विज़ लेने के लिए कम से कम एक पाठ पूरा करना होगा।",
-          "ਕਵਿਜ਼ ਲੈਣ ਲਈ ਘੱਟੋ-ਘੱਟ ਇੱਕ ਪਾਠ ਪੂਰਾ ਕਰਨਾ ਹੋਵੇਗਾ।",
-        ),
-        variant: "destructive",
-      })
-      return
-    }
-
+  const handleModuleClick = (module: LearningModule) => {
     toast({
-      title: getText("Quiz Starting...", "प्रश्नोत्तरी शुरू हो रही है...", "ਕਵਿਜ਼ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ..."),
-      description: getText("Test your knowledge!", "अपने ज्ञान का परीक्षण करें!", "ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ!"),
+      title: getText("Loading Module...", "मॉड्यूल लोड हो रहा है...", "ਮਾਡਿਊਲ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ..."),
+      description: getText(module.title, module.titleHi, module.titlePa),
     })
 
     setTimeout(() => {
-      window.location.href = "/quiz"
-    }, 1000)
+      router.push(module.path)
+    }, 500)
   }
 
   const handleViewProfile = () => {
@@ -266,7 +224,18 @@ export function StudentDashboard() {
     })
 
     setTimeout(() => {
-      window.location.href = "/profile"
+      router.push('/student/profile')  // Redirect to student profile, not login
+    }, 1000)
+  }
+
+  const handleTakeQuiz = () => {
+    toast({
+      title: getText("Quiz Center", "प्रश्नोत्तरी केंद्र", "ਕਵਿਜ਼ ਕੇਂਦਰ"),
+      description: getText("Opening quiz selection...", "प्रश्नोत्तरी चयन खोला जा रहा है...", "ਕਵਿਜ਼ ਚੋਣ ਖੋਲੀ ਜਾ ਰਹੀ ਹੈ..."),
+    })
+
+    setTimeout(() => {
+      router.push('/quizzes')
     }, 1000)
   }
 
@@ -281,31 +250,22 @@ export function StudentDashboard() {
     })
 
     setTimeout(() => {
-      window.location.href = "/help"
+      router.push('/help')
     }, 1000)
   }
 
   const getText = (en: string, hi: string, pa: string) => {
-    switch (language) {
-      case "hi":
-        return hi
-      case "pa":
-        return pa
-      default:
-        return en
-    }
+    return language === "hi" ? hi : language === "pa" ? pa : en
   }
-
-  const completedLessons = lessons.filter((lesson) => lesson.completed).length
-  const totalLessons = lessons.length
-  const progressPercentage = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-muted-foreground">Loading your learning dashboard...</p>
+          <p className="text-muted-foreground">
+            {getText("Loading your learning hub...", "आपका शिक्षा केंद्र लोड हो रहा है...", "ਤੁਹਾਡਾ ਸਿੱਖਣ ਕੇਂਦਰ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...")}
+          </p>
         </div>
       </div>
     )
@@ -323,10 +283,10 @@ export function StudentDashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-balance">
-                  {getText("Digital Learning", "डिजिटल शिक्षा", "ਡਿਜੀਟਲ ਸਿੱਖਿਆ")}
+                  {getText("Learning Hub", "शिक्षा केंद्र", "ਸਿੱਖਣ ਕੇਂਦਰ")}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {getText("Learn at your own pace", "अपनी गति से सीखें", "ਆਪਣੀ ਰਫਤਾਰ ਨਾਲ ਸਿੱਖੋ")}
+                  {getText("Your personalized learning journey", "आपकी व्यक्तिगत शिक्षा यात्रा", "ਤੁਹਾਡੀ ਵਿਅਕਤੀਗਤ ਸਿੱਖਣ ਯਾਤਰਾ")}
                 </p>
               </div>
             </div>
@@ -359,11 +319,27 @@ export function StudentDashboard() {
                 </span>
               </div>
 
-              {/* Profile */}
-              <Button variant="ghost" size="sm" className="gap-2" onClick={handleViewProfile}>
-                <User className="w-4 h-4" />
-                <span className="hidden sm:inline">{getText("Profile", "प्रोफ़ाइल", "ਪ੍ਰੋਫਾਈਲ")}</span>
-              </Button>
+              {/* Profile + Logout (matching teacher dashboard style) */}
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={handleViewProfile}>
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">{getText("Profile", "प्रोफ़ाइल", "ਪ੍ਰੋਫਾਈਲ")}</span>
+                </Button>
+                
+                {/* Logout Button (exact same style as teacher dashboard) */}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                  onClick={handleLogout}
+                  disabled={loading}
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">
+                    {loading ? getText("Logging out...", "लॉगआउट हो रहा है...", "ਲਾਗਆਊਟ ਹੋ ਰਿਹਾ ਹੈ...") : getText("Logout", "लॉगआउट", "ਲਾਗਆਊਟ")}
+                  </span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -374,141 +350,135 @@ export function StudentDashboard() {
         <div className="text-center space-y-4">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium">
             <Star className="w-4 h-4" />
-            {getText("Welcome back!", "वापस स्वागत है!", "ਵਾਪਸ ਜੀ ਆਇਆਂ ਨੂੰ!")}
+            {getText(
+              `Welcome back${currentStudent?.user?.first_name ? `, ${currentStudent.user.first_name}` : ''}!`,
+              `वापस स्वागत है${currentStudent?.user?.first_name ? `, ${currentStudent.user.first_name}` : ''}!`,
+              `ਵਾਪਸ ਜੀ ਆਇਆਂ ਨੂੰ${currentStudent?.user?.first_name ? `, ${currentStudent.user.first_name}` : ''}!`
+            )}
           </div>
           <h2 className="text-2xl font-bold text-balance">
             {getText("Continue Your Learning Journey", "अपनी सीखने की यात्रा जारी रखें", "ਆਪਣੀ ਸਿੱਖਣ ਦੀ ਯਾਤਰਾ ਜਾਰੀ ਰੱਖੋ")}
           </h2>
         </div>
 
-        {/* Progress Overview */}
-        <Card className="bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-primary" />
-              {getText("Your Progress", "आपकी प्रगति", "ਤੁਹਾਡੀ ਤਰੱਕੀ")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                {getText("Lessons Completed", "पूरे किए गए पाठ", "ਪੂਰੇ ਕੀਤੇ ਪਾਠ")}
-              </span>
-              <span className="font-semibold">
-                {completedLessons}/{totalLessons}
-              </span>
-            </div>
-            <Progress value={progressPercentage} className="h-3" />
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                {Math.round(progressPercentage)}% {getText("Complete", "पूर्ण", "ਪੂਰਾ")}
-              </span>
-              <div className="flex items-center gap-1 text-primary">
-                <Trophy className="w-4 h-4" />
-                <span>
-                  {achievements.filter((a) => a.earned).length} {getText("Badges", "बैज", "ਬੈਜ")}
-                </span>
+        {/* Progress Overview (Real Data) */}
+        {studentProgress && (
+          <Card className="bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                {getText("Your Progress", "आपकी प्रगति", "ਤੁਹਾਡੀ ਤਰੱਕੀ")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-primary">{studentProgress.completed_quizzes}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {getText("Quizzes Completed", "पूरी की गई प्रश्नोत्तरी", "ਪੂਰੀ ਕੀਤੀ ਕਵਿਜ਼")}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-success">{Math.round(studentProgress.average_score)}%</div>
+                  <div className="text-sm text-muted-foreground">
+                    {getText("Average Score", "औसत स्कोर", "ਔਸਤ ਸਕੋਰ")}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-accent">{studentProgress.badges.length}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {getText("Badges Earned", "अर्जित बैज", "ਪ੍ਰਾਪਤ ਬੈਜ")}
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+              
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {getText("Overall Progress", "कुल प्रगति", "ਕੁੱਲ ਤਰੱਕੀ")}
+                </span>
+                <div className="flex items-center gap-1 text-primary">
+                  <TrendingUp className="w-4 h-4" />
+                  <span>{Math.round((studentProgress.completed_quizzes / Math.max(studentProgress.total_quizzes, 1)) * 100)}%</span>
+                </div>
+              </div>
+              <Progress value={(studentProgress.completed_quizzes / Math.max(studentProgress.total_quizzes, 1)) * 100} className="h-3" />
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Lessons Grid */}
+        {/* Learning Modules (Main Navigation) */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary" />
-            {getText("Available Lessons", "उपलब्ध पाठ", "ਉਪਲਬਧ ਪਾਠ")}
+            {getText("Learning Modules", "शिक्षा मॉड्यूल", "ਸਿੱਖਣ ਮਾਡਿਊਲ")}
           </h3>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {lessons.map((lesson) => (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {learningModules.map((module) => (
               <Card
-                key={lesson.id}
-                className={`cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${
-                  lesson.completed ? "bg-success/5 border-success/20" : "hover:border-primary/50"
-                }`}
-                onClick={() => handleLessonAction(lesson)}
+                key={module.id}
+                className="cursor-pointer transition-all hover:shadow-lg hover:scale-105 overflow-hidden"
+                onClick={() => handleModuleClick(module)}
               >
+                <div className={`h-2 bg-gradient-to-r ${module.color}`}></div>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-1 flex-1">
+                    <div className="space-y-2 flex-1">
+                      <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-r ${module.color} text-white`}>
+                        {module.icon}
+                      </div>
                       <CardTitle className="text-base text-balance">
-                        {getText(lesson.title, lesson.titleHi, lesson.titlePa)}
+                        {getText(module.title, module.titleHi, module.titlePa)}
                       </CardTitle>
-                      <Badge
-                        variant={
-                          lesson.difficulty === "beginner"
-                            ? "secondary"
-                            : lesson.difficulty === "intermediate"
-                              ? "default"
-                              : "destructive"
-                        }
-                        className="text-xs"
-                      >
-                        {getText(lesson.category, lesson.categoryHi, lesson.categoryPa)}
-                      </Badge>
                     </div>
-                    {lesson.completed ? (
-                      <CheckCircle className="w-6 h-6 text-success animate-bounce-gentle" />
-                    ) : (
-                      <Play className="w-6 h-6 text-primary" />
-                    )}
+                    <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <p className="text-sm text-muted-foreground mb-3 text-pretty">
-                    {getText(lesson.description, lesson.descriptionHi, lesson.descriptionPa)}
+                  <p className="text-sm text-muted-foreground mb-4 text-pretty">
+                    {getText(module.description, module.descriptionHi, module.descriptionPa)}
                   </p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3" />
-                      {lesson.duration} {getText("min", "मिनट", "ਮਿੰਟ")}
-                    </div>
-                    <Button size="sm" variant={lesson.completed ? "secondary" : "default"}>
-                      {lesson.completed ? getText("Review", "समीक्षा", "ਸਮੀਖਿਆ") : getText("Start", "शुरू करें", "ਸ਼ੁਰੂ ਕਰੋ")}
-                    </Button>
-                  </div>
+                  <Button size="sm" className="w-full">
+                    {getText("Start Learning", "सीखना शुरू करें", "ਸਿੱਖਣਾ ਸ਼ੁਰੂ ਕਰੋ")}
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         </div>
 
-        {/* Achievements */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Award className="w-5 h-5 text-accent" />
-            {getText("Your Achievements", "आपकी उपलब्धियां", "ਤੁਹਾਡੀਆਂ ਪ੍ਰਾਪਤੀਆਂ")}
-          </h3>
+        {/* Recent Achievements (Real Data) */}
+        {studentProgress && studentProgress.badges.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Award className="w-5 h-5 text-accent" />
+              {getText("Recent Achievements", "हाल की उपलब्धियां", "ਹਾਲ ਦੀਆਂ ਪ੍ਰਾਪਤੀਆਂ")}
+            </h3>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {achievements.map((achievement) => (
-              <Card
-                key={achievement.id}
-                className={`${achievement.earned ? "bg-accent/5 border-accent/20 animate-pulse-glow" : "opacity-60"}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`text-2xl ${achievement.earned ? "animate-bounce-gentle" : "grayscale"}`}>
-                      {achievement.icon}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {studentProgress.badges.slice(0, 6).map((badge) => (
+                <Card key={badge.id} className="bg-accent/5 border-accent/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-2xl">{badge.badge.icon || '🏆'}</div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-sm text-balance">
+                          {badge.badge.name}
+                        </h4>
+                        <p className="text-xs text-muted-foreground text-pretty">
+                          {badge.badge.description}
+                        </p>
+                        <p className="text-xs text-accent mt-1">
+                          {getText("Earned", "अर्जित", "ਪ੍ਰਾਪਤ")}: {new Date(badge.earned_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-balance">
-                        {getText(achievement.title, achievement.titleHi, achievement.titlePa)}
-                      </h4>
-                      <p className="text-xs text-muted-foreground text-pretty">
-                        {getText(achievement.description, achievement.descriptionHi, achievement.descriptionPa)}
-                      </p>
-                      {!achievement.earned && achievement.progress > 0 && (
-                        <Progress value={achievement.progress} className="h-1 mt-2" />
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Quick Actions */}
         <Card>
@@ -516,23 +486,7 @@ export function StudentDashboard() {
             <CardTitle className="text-base">{getText("Quick Actions", "त्वरित कार्य", "ਤੇਜ਼ ਕਾਰਵਾਈਆਂ")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Button
-                variant="outline"
-                className="justify-start gap-2 h-auto p-4 bg-transparent"
-                onClick={handleDownloadLessons}
-              >
-                <Download className="w-4 h-4 text-secondary" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">
-                    {getText("Download Lessons", "पाठ डाउनलोड करें", "ਪਾਠ ਡਾਊਨਲੋਡ ਕਰੋ")}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {getText("For offline use", "ऑफ़लाइन उपयोग के लिए", "ਔਫਲਾਈਨ ਵਰਤੋਂ ਲਈ")}
-                  </div>
-                </div>
-              </Button>
-
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Button
                 variant="outline"
                 className="justify-start gap-2 h-auto p-4 bg-transparent"
@@ -542,7 +496,7 @@ export function StudentDashboard() {
                 <div className="text-left">
                   <div className="font-medium text-sm">{getText("Take Quiz", "प्रश्नोत्तरी लें", "ਕਵਿਜ਼ ਲਓ")}</div>
                   <div className="text-xs text-muted-foreground">
-                    {getText("Test your knowledge", "अपने ज्ञान का परीक्षण करें!", "ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ!")}
+                    {getText("Test your knowledge", "अपने ज्ञान का परीक्षण करें", "ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ")}
                   </div>
                 </div>
               </Button>
@@ -561,7 +515,11 @@ export function StudentDashboard() {
                 </div>
               </Button>
 
-              <Button variant="outline" className="justify-start gap-2 h-auto p-4 bg-transparent" onClick={handleHelp}>
+              <Button 
+                variant="outline" 
+                className="justify-start gap-2 h-auto p-4 bg-transparent" 
+                onClick={handleHelp}
+              >
                 <HelpCircle className="w-4 h-4 text-primary" />
                 <div className="text-left">
                   <div className="font-medium text-sm">

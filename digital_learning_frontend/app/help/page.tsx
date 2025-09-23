@@ -1,5 +1,5 @@
-import { HelpPage } from "@/components/help-page"
+import { HelpCenter } from "@/components/help-page"
 
-export default function Help() {
-  return <HelpPage />
+export default function HelpPage() {
+  return <HelpCenter />
 }
