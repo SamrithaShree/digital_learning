@@ -2,7 +2,7 @@
 
 import { TeacherDashboard } from "@/components/teacher-dashboard" // This path is based on your file structure
 
-export default function Page() {
+export default function TeacherDashboardPage() {
   // This page simply renders your main teacher dashboard component.
   return <TeacherDashboard />
 }

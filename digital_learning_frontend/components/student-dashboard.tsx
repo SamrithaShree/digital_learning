@@ -113,7 +113,7 @@ export function StudentDashboard() {
       descriptionPa: "ਪ੍ਰੋਗਰਾਮਿੰਗ ਅਤੇ ਤਕਨੀਕੀ ਭਾਸ਼ਾਵਾਂ ਦੀ ਖੋਜ ਕਰੋ",
       icon: <Code className="w-8 h-8" />,
       color: "from-green-500 to-emerald-500",
-      path: "/student/stem-languages",
+      path: "/student/stem-learning",
       completed: false,
       progress: 0
     },
@@ -191,7 +191,7 @@ export function StudentDashboard() {
         title: "Logged Out Successfully", 
         description: "You have been securely logged out." 
       })
-      router.push('/auth/login')
+      router.push('/get-started')
     } catch (error) {
       console.error("Logout error:", error)
       // Force logout even if API fails
@@ -200,7 +200,7 @@ export function StudentDashboard() {
         title: "Logged Out", 
         description: "Session ended successfully." 
       })
-      router.push('/auth/login')
+      router.push('/get-started')
     } finally {
       setLoading(false)
     }

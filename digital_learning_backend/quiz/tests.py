@@ -65,7 +65,7 @@ class QuizAPITests(TestCase):
 
     def test_teacher_login(self):
         """Test teacher authentication"""
-        response = self.client.post('/api/auth/login/', {
+        response = self.client.post('/auth//login/', {
             'username': 'teacher1',
             'password': 'teacher123'
         }, format='json')

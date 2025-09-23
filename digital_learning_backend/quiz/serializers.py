@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Quiz, Question, QuizAttempt, Badge, Student, Teacher, StudentBadge, ClassRoom, Enrollment
+from .models import Quiz, Question, QuizAttempt, Badge, Student, Teacher, StudentBadge, ClassRoom, Enrollment, VideoCategory, Video, VideoProgress
 
 class TeacherRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -179,4 +179,73 @@ class MyProgressSerializer(serializers.ModelSerializer):
 class ErrorSerializer(serializers.Serializer):
     error = serializers.CharField()
 
+class VideoCategorySerializer(serializers.ModelSerializer):
+    video_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = VideoCategory
+        fields = ['id', 'name', 'category_type', 'description', 'video_count', 'created_at']
+    
+    def get_video_count(self, obj):
+        return obj.videos.count()
 
+class VideoSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_type = serializers.CharField(source='category.category_type', read_only=True)
+    video_url = serializers.SerializerMethodField()
+    is_completed = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Video
+        fields = [
+            'id', 'title', 'title_hi', 'title_pa',
+            'description', 'description_hi', 'description_pa',
+            'category_name', 'category_type', 'difficulty',
+            'video_url', 'duration_minutes', 'thumbnail_url',
+            'view_count', 'is_completed', 'progress_percentage',
+            'created_at'
+        ]
+    
+    def get_video_url(self, obj):
+        # Get language from request context
+        request = self.context.get('request')
+        language = 'en'
+        
+        if request and hasattr(request, 'user') and hasattr(request.user, 'student'):
+            # You could store language preference in user model
+            language = request.GET.get('lang', 'en')
+        
+        return obj.get_video_url(language)
+    
+    def get_is_completed(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'student'):
+            try:
+                progress = VideoProgress.objects.get(student=request.user.student, video=obj)
+                return progress.completed
+            except VideoProgress.DoesNotExist:
+                return False
+        return False
+    
+    def get_progress_percentage(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'student'):
+            try:
+                progress = VideoProgress.objects.get(student=request.user.student, video=obj)
+                return progress.completion_percentage
+            except VideoProgress.DoesNotExist:
+                return 0.0
+        return 0.0
+
+class VideoProgressSerializer(serializers.ModelSerializer):
+    video_title = serializers.CharField(source='video.title', read_only=True)
+    
+    class Meta:
+        model = VideoProgress
+        fields = [
+            'id', 'video', 'video_title', 'watch_time_seconds',
+            'completed', 'completion_percentage', 'preferred_language',
+            'first_watched', 'last_watched'
+        ]
+        read_only_fields = ['student', 'first_watched']

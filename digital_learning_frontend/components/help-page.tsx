@@ -131,7 +131,7 @@ export function HelpCenter() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-teal-50">
       <NavigationHeader
         title={language === "hindi" ? "सहायता केंद्र" : language === "punjabi" ? "ਸਹਾਇਤਾ ਕੇਂਦਰ" : "Help Center"}
-        backUrl="/get-started"
+        backUrl="/student/dashboard"
       />
 
       <div className="p-4">

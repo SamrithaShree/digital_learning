@@ -48,7 +48,7 @@ export function TeacherAuthPage() {
         const lastName = nameParts.slice(1).join(' ');
 
         // Send the schoolId and teacherId along with other data
-        await api.post('/auth/register/teacher/', {
+        await api.post('auth/register/teacher/', {
             username: formData.username,
             password: formData.password,
             first_name: firstName,
@@ -87,6 +87,7 @@ export function TeacherAuthPage() {
       if (role === 'teacher') {
         localStorage.setItem('authToken', token);
         localStorage.setItem('userInfo', JSON.stringify(user_info));
+        localStorage.setItem('role', role);    
         
         toast({
           title: "Welcome Back, Teacher!",
@@ -94,7 +95,7 @@ export function TeacherAuthPage() {
         })
 
         // Redirect to teacher dashboard
-        router.push('/teacher/dashboard'); // Or just '/teacher' if that's the route
+        router.push('/teacher/dashboard'); 
       } else {
         toast({
           title: "Login Error",

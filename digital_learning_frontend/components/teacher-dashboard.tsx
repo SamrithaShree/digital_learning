@@ -101,19 +101,21 @@ export function TeacherDashboard() {
   const { toast } = useToast()
   const router = useRouter()
 
-  // Add logout function (same as student dashboard)
+  // ✅ FIXED: Logout function with CORRECT localStorage keys
   const handleLogout = async () => {
     setLoading(true)
     try {
       await api.post('/auth/logout/')
-      localStorage.removeItem('token')
-      localStorage.removeItem('user_info')
-      localStorage.removeItem('role')
+      // ✅ CORRECT KEYS that match Version 1 and your API
+      localStorage.removeItem('authToken')      // ✅ Matches API interceptor
+      localStorage.removeItem('userInfo')       // ✅ Matches your auth page
+      localStorage.removeItem('role')           // ✅ Matches role checking
+      
       toast({ 
         title: "Logged Out Successfully", 
         description: "You have been securely logged out." 
       })
-      router.push('/auth/login')
+      router.push('/get-started')
     } catch (error) {
       console.error("Logout error:", error)
       // Force logout even if API fails
@@ -122,7 +124,7 @@ export function TeacherDashboard() {
         title: "Logged Out", 
         description: "Session ended successfully." 
       })
-      router.push('/auth/login')
+      router.push('/get-started')
     } finally {
       setLoading(false)
     }
@@ -226,7 +228,7 @@ export function TeacherDashboard() {
   const handleViewClass = async (classId: string) => {
     setModalLoading(true)
     try {
-      const response = await api.get(`/classes/${classId}/details/`)
+      const response = await api.get(`/classrooms/${classId}/`)
       setViewingClass(response.data)
       setClassStudents(response.data.students || [])
       setShowClassModal(true)
@@ -885,6 +887,7 @@ export function TeacherDashboard() {
     </div>
   )
 }
+
 
 // "use client"
 

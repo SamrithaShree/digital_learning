@@ -50,7 +50,7 @@ export function StudentAuthPage() {
         const lastName = nameParts.slice(1).join(' ');
 
         // Make the API call to the registration endpoint
-        await api.post('/auth/register/', {
+        await api.post('auth/register/', {
             username: formData.username,
             password: formData.password,
             first_name: firstName,

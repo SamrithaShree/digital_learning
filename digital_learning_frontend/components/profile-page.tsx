@@ -87,7 +87,7 @@ export function ProfilePage() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-teal-50">
       <NavigationHeader
         title={language === "hindi" ? "मेरी प्रोफाइल" : language === "punjabi" ? "ਮੇਰੀ ਪ੍ਰੋਫਾਈਲ" : "My Profile"}
-        backUrl="/get-started"
+        backUrl="/student/dashboard"
       />
 
       <div className="p-4">

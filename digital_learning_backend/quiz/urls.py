@@ -6,6 +6,10 @@ from .views import (
     TeacherDashboardView,
     ClassRoomViewSet,
     ClassDetailView,
+    VideoCategoriesView,
+    VideoDetailView,
+    VideoListView,
+    VideoProgressView,
     export_progress,
     login_view,
     logout_view,
@@ -49,6 +53,13 @@ urlpatterns = [
     path('enrollments/<int:enrollment_id>/status/', update_student_status, name='update_student_status'),
     path('enrollments/<int:enrollment_id>/progress/', update_student_progress, name='update_student_progress'),
     path('students/available/', get_available_students, name='available_students'),
+
+    path('videos/', VideoListView.as_view(), name='video-list'),
+    path('videos/<int:video_id>/', VideoDetailView.as_view(), name='video-detail'),
+    path('videos/<int:video_id>/progress/', VideoProgressView.as_view(), name='video-progress'),
+    path('video-categories/', VideoCategoriesView.as_view(), name='video-categories'),
+
+    path('submit/', QuizSubmissionView.as_view(), name='quiz-submit'),
 ]
 
 

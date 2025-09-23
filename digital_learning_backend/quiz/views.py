@@ -10,9 +10,9 @@ import csv
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 
-from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment
+from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment, Video, VideoCategory, VideoProgress
 from .serializers import (
-    QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer,
+    QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer, VideoCategorySerializer, VideoSerializer, VideoProgressSerializer,
     BadgeSerializer, QuizAttemptSerializer, ClassRoomSerializer, EnrollmentSerializer, StudentProgressSerializer,StudentRegistrationSerializer,
     TeacherRegistrationSerializer, UserSerializer, MyProgressSerializer, ErrorSerializer
 )
@@ -611,6 +611,101 @@ def update_enrollment(request, enrollment_id):
         
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+    
+class VideoListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        if not hasattr(request.user, 'student'):
+            return Response(
+                {'error': 'Only students can access videos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Filter by category if provided
+        category_type = request.query_params.get('category')
+        difficulty = request.query_params.get('difficulty')
+        
+        videos = Video.objects.all()
+        
+        if category_type:
+            videos = videos.filter(category__category_type=category_type)
+        
+        if difficulty:
+            videos = videos.filter(difficulty=difficulty)
+        
+        serializer = VideoSerializer(videos, many=True, context={'request': request})
+        return Response({
+            'videos': serializer.data
+        })
+
+class VideoDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, video_id):
+        try:
+            video = get_object_or_404(Video, id=video_id)
+            
+            # Increment view count
+            video.view_count += 1
+            video.save()
+            
+            serializer = VideoSerializer(video, context={'request': request})
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class VideoProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, video_id):
+        """Update video progress"""
+        try:
+            video = get_object_or_404(Video, id=video_id)
+            student = request.user.student
+            
+            # Get or create progress record
+            progress, created = VideoProgress.objects.get_or_create(
+                student=student,
+                video=video,
+                defaults={
+                    'preferred_language': request.data.get('language', 'en')
+                }
+            )
+            
+            # Update progress
+            watch_time = request.data.get('watch_time_seconds', 0)
+            completion_percentage = request.data.get('completion_percentage', 0)
+            
+            progress.watch_time_seconds = max(progress.watch_time_seconds, watch_time)
+            progress.completion_percentage = completion_percentage
+            progress.completed = completion_percentage >= 80  # 80% completion threshold
+            progress.preferred_language = request.data.get('language', progress.preferred_language)
+            
+            progress.save()
+            
+            serializer = VideoProgressSerializer(progress)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class VideoCategoriesView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        categories = VideoCategory.objects.all()
+        serializer = VideoCategorySerializer(categories, many=True)
+        return Response({
+            'categories': serializer.data
+        })
 
 # from django.shortcuts import get_object_or_404
 # from django.contrib.auth import authenticate

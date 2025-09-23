@@ -1,88 +1,102 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Monitor, Mouse, Keyboard, Globe, Shield, BookOpen, Play, CheckCircle } from "lucide-react"
+import { VideoPlayer } from "./video-player"
+import { ArrowLeft, Monitor, Play, BookOpen, Video as VideoIcon, List } from "lucide-react"
 
-interface Lesson {
-  id: string
-  title: string
-  titleHi: string
-  titlePa: string
-  description: string
-  descriptionHi: string
-  descriptionPa: string
-  duration: number
-  completed: boolean
-  icon: React.ReactNode
+interface Video {
+  id: number;
+  title: string;
+  title_hi: string;
+  title_pa: string;
+  description: string;
+  description_hi: string;
+  description_pa: string;
+  category_name: string;
+  category_type: string;
+  difficulty: string;
+  video_url: string;
+  view_count: number;
+  duration_minutes: number;
+  thumbnail_url: string;
+  is_completed: boolean;
+  progress_percentage: number;
 }
 
 export function DigitalLiteracyDashboard() {
   const [language, setLanguage] = useState<"en" | "hi" | "pa">("en")
-  const [lessons] = useState<Lesson[]>([
-    {
-      id: "computer-basics",
-      title: "Computer Basics",
-      titleHi: "कंप्यूटर की बुनियादी बातें",
-      titlePa: "ਕੰਪਿਊਟਰ ਬੇਸਿਕ",
-      description: "Learn about computer components and basic operations",
-      descriptionHi: "कंप्यूटर के घटकों और बुनियादी संचालन के बारे में जानें",
-      descriptionPa: "ਕੰਪਿਊਟਰ ਦੇ ਹਿੱਸਿਆਂ ਅਤੇ ਬੁਨਿਆਦੀ ਸੰਚਾਲਨ ਬਾਰੇ ਸਿੱਖੋ",
-      duration: 30,
-      completed: false,
-      icon: <Monitor className="w-6 h-6" />
-    },
-    {
-      id: "mouse-keyboard",
-      title: "Mouse & Keyboard",
-      titleHi: "माउस और कीबोर्ड",
-      titlePa: "ਮਾਊਸ ਅਤੇ ਕੀਬੋਰਡ",
-      description: "Master the basic input devices",
-      descriptionHi: "बुनियादी इनपुट उपकरणों में महारत हासिल करें",
-      descriptionPa: "ਬੁਨਿਆਦੀ ਇੰਪੁਟ ਡਿਵਾਈਸਾਂ ਵਿੱਚ ਮਹਾਰਤ ਹਾਸਿਲ ਕਰੋ",
-      duration: 25,
-      completed: false,
-      icon: <Mouse className="w-6 h-6" />
-    },
-    {
-      id: "internet-basics",
-      title: "Internet Basics",
-      titleHi: "इंटरनेट की बुनियादी बातें",
-      titlePa: "ਇੰਟਰਨੈੱਟ ਬੇਸਿਕ",
-      description: "Understanding the world wide web",
-      descriptionHi: "विश्वव्यापी वेब को समझना",
-      descriptionPa: "ਵਿਸ਼ਵਵਿਆਪੀ ਵੈੱਬ ਨੂੰ ਸਮਝਣਾ",
-      duration: 35,
-      completed: false,
-      icon: <Globe className="w-6 h-6" />
-    },
-    {
-      id: "digital-safety",
-      title: "Digital Safety",
-      titleHi: "डिजिटल सुरक्षा",
-      titlePa: "ਡਿਜੀਟਲ ਸੁਰੱਖਿਆ",
-      description: "Stay safe online and protect your data",
-      descriptionHi: "ऑनलाइन सुरक्षित रहें और अपने डेटा की सुरक्षा करें",
-      descriptionPa: "ਆਨਲਾਈਨ ਸੁਰੱਖਿਅਤ ਰਹੋ ਅਤੇ ਆਪਣੇ ਡੇਟਾ ਦੀ ਸੁਰੱਖਿਆ ਕਰੋ",
-      duration: 40,
-      completed: false,
-      icon: <Shield className="w-6 h-6" />
-    }
-  ])
-
+  const [videos, setVideos] = useState<Video[]>([])
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<"list" | "player">("list")
+  
   const router = useRouter()
 
   const getText = (en: string, hi: string, pa: string) => {
     return language === "hi" ? hi : language === "pa" ? pa : en
   }
 
-  const completedLessons = lessons.filter(l => l.completed).length
-  const totalLessons = lessons.length
-  const progressPercentage = (completedLessons / totalLessons) * 100
+  useEffect(() => {
+    fetchVideos()
+  }, [language])
+
+  const fetchVideos = async () => {
+    try {
+      const response = await api.get('/videos/', {
+        params: {
+          category: 'digital_literacy',
+          lang: language
+        }
+      })
+      setVideos(response.data.videos || [])
+    } catch (error) {
+      console.error("Failed to fetch videos:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVideoSelect = (video: Video) => {
+    setSelectedVideo(video)
+    setViewMode("player")
+  }
+
+  const handleProgressUpdate = async (progressData: any) => {
+    if (!selectedVideo) return
+    
+    try {
+      await api.post(`/videos/${selectedVideo.id}/progress/`, progressData)
+      // Update local state
+      setVideos(prev => prev.map(v => 
+        v.id === selectedVideo.id 
+          ? { ...v, progress_percentage: progressData.completion_percentage }
+          : v
+      ))
+    } catch (error) {
+      console.error("Failed to update progress:", error)
+    }
+  }
+
+  const completedCount = videos.filter(v => v.is_completed).length
+  const totalCount = videos.length
+  const overallProgress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <p>Loading digital literacy content...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -91,15 +105,28 @@ export function DigitalLiteracyDashboard() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push('/student/dashboard')}
-                className="gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                {getText("Back to Hub", "हब पर वापस", "ਹੱਬ ਵਿੱਚ ਵਾਪਸ")}
-              </Button>
+              {viewMode === "player" ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  {getText("Back to Videos", "वीडियो पर वापस", "ਵੀਡੀਓ ਵਿੱਚ ਵਾਪਸ")}
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push('/student/dashboard')}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  {getText("Back to Hub", "हब पर वापस", "ਹੱਬ ਵਿੱਚ ਵਾਪਸ")}
+                </Button>
+              )}
+              
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
                 <Monitor className="w-6 h-6 text-primary-foreground" />
               </div>
@@ -108,112 +135,180 @@ export function DigitalLiteracyDashboard() {
                   {getText("Digital Literacy", "डिजिटल साक्षरता", "ਡਿਜੀਟਲ ਸਾਖਰਤਾ")}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {getText("Learn essential digital skills", "आवश्यक डिजिटल कौशल सीखें", "ਜ਼ਰੂਰੀ ਡਿਜੀਟਲ ਹੁਨਰ ਸਿੱਖੋ")}
+                  {getText("Interactive video lessons", "इंटरैक्टिव वीडियो पाठ", "ਇੰਟਰਐਕਟਿਵ ਵੀਡੀਓ ਪਾਠ")}
                 </p>
               </div>
             </div>
 
-            {/* Language Selector */}
-            <div className="flex bg-muted rounded-lg p-1">
-              {(["en", "hi", "pa"] as const).map((lang) => (
-                <Button
-                  key={lang}
-                  variant={language === lang ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setLanguage(lang)}
-                  className="text-xs px-3"
-                >
-                  {lang === "en" ? "EN" : lang === "hi" ? "हि" : "ਪਾ"}
-                </Button>
-              ))}
+            <div className="flex items-center gap-3">
+              {/* View Mode Toggle */}
+              {viewMode === "list" && (
+                <div className="flex bg-muted rounded-lg p-1">
+                  <Button variant="default" size="sm" className="gap-1">
+                    <List className="w-4 h-4" />
+                    {getText("Videos", "वीडियो", "ਵੀਡੀਓ")}
+                  </Button>
+                </div>
+              )}
+
+              {/* Language Selector */}
+              <div className="flex bg-muted rounded-lg p-1">
+                {(["en", "hi", "pa"] as const).map((lang) => (
+                  <Button
+                    key={lang}
+                    variant={language === lang ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setLanguage(lang)}
+                    className="text-xs px-3"
+                  >
+                    {lang === "en" ? "EN" : lang === "hi" ? "हि" : "ਪਾ"}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Progress Overview */}
-        <Card className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-blue-500" />
-              {getText("Your Progress", "आपकी प्रगति", "ਤੁਹਾਡੀ ਤਰੱਕੀ")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                {getText("Lessons Completed", "पूरे किए गए पाठ", "ਪੂਰੇ ਕੀਤੇ ਪਾਠ")}
-              </span>
-              <span className="font-semibold">
-                {completedLessons}/{totalLessons}
-              </span>
-            </div>
-            <Progress value={progressPercentage} className="h-3" />
-            <div className="text-sm text-muted-foreground">
-              {Math.round(progressPercentage)}% {getText("Complete", "पूर्ण", "ਪੂਰਾ")}
-            </div>
-          </CardContent>
-        </Card>
+      <main className="container mx-auto px-4 py-6">
+        {viewMode === "player" && selectedVideo ? (
+          /* Video Player View */
+          <VideoPlayer
+            video={selectedVideo}
+            language={language}
+            onProgressUpdate={handleProgressUpdate}
+          />
+        ) : (
+          /* Video List View */
+          <div className="space-y-6">
+            {/* Progress Overview */}
+            <Card className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-blue-500" />
+                  {getText("Your Progress", "आपकी प्रगति", "ਤੁਹਾਡੀ ਤਰੱਕੀ")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{completedCount}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {getText("Videos Completed", "पूरे किए गए वीडियो", "ਪੂਰੇ ਕੀਤੇ ਵੀਡੀਓ")}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-primary">{totalCount}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {getText("Total Videos", "कुल वीडियो", "ਕੁੱਲ ਵੀਡੀਓ")}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-success">{Math.round(overallProgress)}%</div>
+                    <div className="text-sm text-muted-foreground">
+                      {getText("Overall Progress", "कुल प्रगति", "ਕੁੱਲ ਤਰੱਕੀ")}
+                    </div>
+                  </div>
+                </div>
+                <Progress value={overallProgress} className="h-3" />
+              </CardContent>
+            </Card>
 
-        {/* Lessons Grid */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">
-            {getText("Available Lessons", "उपलब्ध पाठ", "ਉਪਲਬਧ ਪਾਠ")}
-          </h2>
+            {/* Video Grid */}
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <VideoIcon className="w-5 h-5 text-primary" />
+                {getText("Video Lessons", "वीडियो पाठ", "ਵੀਡੀਓ ਪਾਠ")}
+              </h2>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {lessons.map((lesson) => (
-              <Card
-                key={lesson.id}
-                className={`cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${
-                  lesson.completed ? "bg-success/5 border-success/20" : "hover:border-primary/50"
-                }`}
-                onClick={() => {
-                  // For now, just show a message. Later you can create individual lesson pages
-                  alert(getText(
-                    `Opening: ${lesson.title}`,
-                    `खोला जा रहा है: ${lesson.titleHi}`,
-                    `ਖੋਲਿਆ ਜਾ ਰਿਹਾ ਹੈ: ${lesson.titlePa}`
-                  ))
-                }}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-3">
-                        <div className="text-primary">{lesson.icon}</div>
-                        <CardTitle className="text-base text-balance">
-                          {getText(lesson.title, lesson.titleHi, lesson.titlePa)}
-                        </CardTitle>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {videos.map((video) => (
+                  <Card
+                    key={video.id}
+                    className={`cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${
+                      video.is_completed ? "bg-success/5 border-success/20" : "hover:border-primary/50"
+                    }`}
+                    onClick={() => handleVideoSelect(video)}
+                  >
+                    {/* Thumbnail */}
+                    <div className="relative aspect-video bg-muted rounded-t-lg overflow-hidden">
+                      {video.thumbnail_url ? (
+                        <img 
+                          src={video.thumbnail_url} 
+                          alt={getText(video.title, video.title_hi, video.title_pa)}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500/20 to-cyan-500/20">
+                          <VideoIcon className="w-12 h-12 text-blue-500" />
+                        </div>
+                      )}
+                      
+                      {/* Play Overlay */}
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+                          <Play className="w-8 h-8 text-primary ml-1" />
+                        </div>
                       </div>
-                      <Badge variant="secondary" className="text-xs w-fit">
-                        {lesson.duration} {getText("minutes", "मिनट", "ਮਿੰਟ")}
+                      
+                      {/* Duration Badge */}
+                      <Badge className="absolute bottom-2 right-2 bg-black/70 text-white">
+                        {video.duration_minutes}m
                       </Badge>
                     </div>
-                    {lesson.completed ? (
-                      <CheckCircle className="w-6 h-6 text-success" />
-                    ) : (
-                      <Play className="w-6 h-6 text-primary" />
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <p className="text-sm text-muted-foreground mb-3 text-pretty">
-                    {getText(lesson.description, lesson.descriptionHi, lesson.descriptionPa)}
-                  </p>
-                  <Button size="sm" className="w-full" variant={lesson.completed ? "secondary" : "default"}>
-                    {lesson.completed ? getText("Review", "समीक्षा", "ਸਮੀਖਿਆ") : getText("Start Lesson", "पाठ शुरू करें", "ਪਾਠ ਸ਼ੁਰੂ ਕਰੋ")}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <CardHeader className="pb-3">
+                      <div className="space-y-2">
+                        <CardTitle className="text-base text-balance leading-tight">
+                          {getText(video.title, video.title_hi, video.title_pa)}
+                        </CardTitle>
+                        <div className="flex gap-2">
+                          <Badge variant={
+                            video.difficulty === 'beginner' ? 'secondary' : 
+                            video.difficulty === 'intermediate' ? 'default' : 'destructive'
+                          }>
+                            {video.difficulty}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-0 space-y-3">
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {getText(video.description, video.description_hi, video.description_pa)}
+                      </p>
+                      
+                      {/* Progress */}
+                      {video.progress_percentage > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>{getText("Progress", "प्रगति", "ਤਰੱਕੀ")}</span>
+                            <span className="font-medium">{Math.round(video.progress_percentage)}%</span>
+                          </div>
+                          <Progress value={video.progress_percentage} className="h-1" />
+                        </div>
+                      )}
+
+                      <Button size="sm" className="w-full" variant={video.is_completed ? "secondary" : "default"}>
+                        {video.is_completed 
+                          ? getText("Watch Again", "फिर देखें", "ਦੁਬਾਰਾ ਵੇਖੋ")
+                          : video.progress_percentage > 0
+                            ? getText("Continue", "जारी रखें", "ਜਾਰੀ ਰੱਖੋ")
+                            : getText("Start Video", "वीडियो शुरू करें", "ਵੀਡੀਓ ਸ਼ੁਰੂ ਕਰੋ")
+                        }
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   )
 }
+
 
 // "use client"
 
