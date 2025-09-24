@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Offline Learning Test</title>
+</head>
+<body>
+    <h1>Offline Learning Platform Test</h1>
+    
+    <button onclick="downloadOfflineContent()">📥 Download Offline Content</button><br><br>
+    <button onclick="submitOfflineQuiz()">✍️ Submit Quiz Offline</button><br><br>
+    <button onclick="testLogin()">🔑 Login Student</button><br><br>
+    <button onclick="getOfflineStatus()">📊 Check Offline Status</button><br><br>
+    
+    <div id="results"></div>
+
+    <script>
+    let authToken = '';
+    
+    async function downloadOfflineContent() {
+        const response = await fetch('http://127.0.0.1:8000/api/offline/download/');
+        const data = await response.json();
+        localStorage.setItem('offlineContent', JSON.stringify(data));
+        document.getElementById('results').innerHTML = `
+            <h3>✅ Offline Content Downloaded</h3>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+    }
+    
+    async function submitOfflineQuiz() {
+        const response = await fetch('http://127.0.0.1:8000/api/offline/submit/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                quiz_id: 1,
+                answers: {"1": "B"},
+                offline_mode: true,
+                student_id: "STU001"
+            })
+        });
+        const data = await response.json();
+        document.getElementById('results').innerHTML = `
+            <h3>✅ Quiz Submitted Offline</h3>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+    }
+    
+    async function testLogin() {
+        const response = await fetch('http://127.0.0.1:8000/api/auth/login/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: 'student1', password: 'student123'})
+        });
+        const data = await response.json();
+        authToken = data.token;
+        document.getElementById('results').innerHTML = `
+            <h3>✅ Login Successful</h3>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+    }
+    
+    async function getOfflineStatus() {
+        const response = await fetch('http://127.0.0.1:8000/api/offline/status/', {
+            headers: {'Authorization': `Token ${authToken}`}
+        });
+        const data = await response.json();
+        document.getElementById('results').innerHTML = `
+            <h3>📊 Offline Status</h3>
+            <pre>${JSON.stringify(data, null, 2)}</pre>
+        `;
+    }
+    </script>
+</body>
+</html>

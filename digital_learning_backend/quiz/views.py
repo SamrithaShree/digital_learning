@@ -9,16 +9,27 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 import csv
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
+from django.utils import timezone
+import uuid
 
-from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment, Video, VideoCategory, VideoProgress
+# ADD the new offline models to imports
+from .models import (
+    Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment, 
+    Video, VideoCategory, VideoProgress,
+    # NEW OFFLINE MODELS
+    OfflineSession, OfflineContent, SyncLog
+)
 from .serializers import (
-    QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer, VideoCategorySerializer, VideoSerializer, VideoProgressSerializer,
-    BadgeSerializer, QuizAttemptSerializer, ClassRoomSerializer, EnrollmentSerializer, StudentProgressSerializer,StudentRegistrationSerializer,
+    QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer, VideoCategorySerializer, 
+    VideoSerializer, VideoProgressSerializer, BadgeSerializer, QuizAttemptSerializer, ClassRoomSerializer, 
+    EnrollmentSerializer, StudentProgressSerializer, StudentRegistrationSerializer,
     TeacherRegistrationSerializer, UserSerializer, MyProgressSerializer, ErrorSerializer
 )
 
+# ========== EXISTING VIEWS (KEEP AS IS) ==========
+
 @api_view(['POST'])
-@permission_classes([AllowAny]) # Anyone can access this page to sign up
+@permission_classes([AllowAny])
 def student_registration_view(request):
     serializer = StudentRegistrationSerializer(data=request.data)
     if serializer.is_valid():
@@ -27,7 +38,7 @@ def student_registration_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
-@permission_classes([AllowAny]) # Anyone can access this page to sign up
+@permission_classes([AllowAny])
 def teacher_registration_view(request):
     serializer = TeacherRegistrationSerializer(data=request.data)
     if serializer.is_valid():
@@ -89,12 +100,15 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({'message': 'Successfully logged out'})
 
+# ========== UPDATED QUIZ VIEWS WITH OFFLINE SUPPORT ==========
+
 class QuizViewSet(viewsets.ModelViewSet):
     serializer_class = QuizSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        return Quiz.objects.prefetch_related('questions').all()
+        # ADD filtering for offline available quizzes
+        return Quiz.objects.filter(offline_available=True).prefetch_related('questions')
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -110,15 +124,15 @@ class QuizViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class QuizSubmissionView(APIView):
-    """
-    API endpoint for submitting quiz answers
-    """
+    """Enhanced API endpoint for submitting quiz answers with offline support"""
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         try:
             quiz_id = request.data.get('quiz_id')
             answers = request.data.get('answers', {})
+            # ADD offline mode detection
+            offline_mode = request.data.get('offline_mode', False)
 
             quiz = get_object_or_404(Quiz, id=quiz_id)
             student = request.user.student
@@ -134,25 +148,44 @@ class QuizSubmissionView(APIView):
 
             score = (correct_count / total_questions * 100) if total_questions > 0 else 0
 
-            # Create new attempt and let the model handle attempt_number
+            # CREATE attempt with offline support
             attempt = QuizAttempt(
                 student=student,
                 quiz=quiz,
                 answers=answers,
-                score=score
+                score=score,
+                offline_attempt=offline_mode,  # ADD offline flag
+                is_synced=not offline_mode     # ADD sync flag
             )
-            attempt.save() # This will call the custom save method
+            attempt.save()
 
-            # Award badges
+            # Award badges with offline badge
+            badges_earned = []
             if score == 100:
-                badge, _ = Badge.objects.get_or_create(name='Perfect Score')
+                badge, _ = Badge.objects.get_or_create(
+                    name='Perfect Score',
+                    defaults={'description': 'Scored 100% on a quiz'}
+                )
                 StudentBadge.objects.get_or_create(student=student, badge=badge)
+                badges_earned.append('Perfect Score')
+            
+            # ADD offline learner badge
+            if offline_mode:
+                badge, _ = Badge.objects.get_or_create(
+                    name='Offline Learner',
+                    defaults={'description': 'Completed quiz in offline mode'}
+                )
+                StudentBadge.objects.get_or_create(student=student, badge=badge)
+                badges_earned.append('Offline Learner')
 
             return Response({
                 'attempt_number': attempt.attempt_number,
                 'score': score,
                 'correct_answers': correct_count,
                 'total_questions': total_questions,
+                'badges_earned': badges_earned,  # ADD badges info
+                'offline_mode': offline_mode,    # ADD offline status
+                'sync_status': 'synced' if not offline_mode else 'pending'
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
@@ -161,7 +194,255 @@ class QuizSubmissionView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# MERGED: Enhanced TeacherDashboardView with date filtering (your friend's feature)
+# ========== NEW OFFLINE ENDPOINTS ==========
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def download_offline_content(request):
+    """Download all content for offline use"""
+    try:
+        # Get all offline-available quizzes
+        quizzes = Quiz.objects.filter(
+            is_active=True, 
+            offline_available=True
+        ).prefetch_related('questions')
+        
+        # Get all offline-available videos
+        videos = Video.objects.filter(offline_available=True)
+        
+        offline_content = {
+            'quizzes': [],
+            'videos': [],
+            'sync_timestamp': timezone.now().isoformat(),
+            'version': 1
+        }
+        
+        # Prepare quiz data (hide correct answers for security)
+        for quiz in quizzes:
+            quiz_data = {
+                'id': str(quiz.id),
+                'name': quiz.name,
+                'subject': quiz.subject,
+                'time_limit': quiz.time_limit,
+                'questions': []
+            }
+            
+            for question in quiz.questions.all():
+                quiz_data['questions'].append({
+                    'id': str(question.id),
+                    'text_en': question.text_en,
+                    'text_pa': question.text_pa,
+                    'options': question.options,
+                    # Don't include correct_answer for offline security
+                })
+            
+            offline_content['quizzes'].append(quiz_data)
+        
+        # Prepare video data
+        for video in videos:
+            video_data = {
+                'id': str(video.id),
+                'title': video.title,
+                'title_pa': video.title_pa,
+                'description': video.description,
+                'category': video.category.category_type,
+                'difficulty': video.difficulty,
+                'duration_minutes': video.duration_minutes,
+                'video_urls': {
+                    'en': video.get_video_url('en'),
+                    'hi': video.get_video_url('hi'),
+                    'pa': video.get_video_url('pa'),
+                }
+            }
+            offline_content['videos'].append(video_data)
+        
+        return Response(offline_content)
+        
+    except Exception as e:
+        return Response({'error': f'Failed to download content: {str(e)}'}, status=500)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def submit_offline_quiz(request):
+    """Submit quiz that works both online and offline"""
+    try:
+        quiz_id = request.data.get('quiz_id')
+        answers = request.data.get('answers', {})
+        offline_mode = request.data.get('offline_mode', False)
+        student_id = request.data.get('student_id')  # For offline identification
+        
+        quiz = get_object_or_404(Quiz, id=quiz_id)
+        
+        # Calculate score
+        correct_count = 0
+        total_questions = quiz.questions.count()
+        
+        for question in quiz.questions.all():
+            student_answer = answers.get(str(question.id))
+            if student_answer == question.correct_answer:
+                correct_count += 1
+        
+        score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+        
+        # Handle online vs offline submission
+        if request.user.is_authenticated and hasattr(request.user, 'student'):
+            # Online user - save normally
+            attempt = QuizAttempt.objects.create(
+                student=request.user.student,
+                quiz=quiz,
+                answers=answers,
+                score=score,
+                offline_attempt=offline_mode,
+                is_synced=not offline_mode
+            )
+        elif offline_mode and student_id:
+            # Offline mode - save to offline session
+            try:
+                student = Student.objects.get(student_id=student_id)
+                offline_session = OfflineSession.objects.create(
+                    student=student,
+                    session_id=str(uuid.uuid4()),
+                    session_data={
+                        'quiz_id': str(quiz_id),
+                        'answers': answers,
+                        'score': score,
+                        'completed_at': timezone.now().isoformat()
+                    },
+                    is_synced=False
+                )
+            except Student.DoesNotExist:
+                return Response({'error': 'Student not found'}, status=404)
+        
+        # Award badges
+        badges_earned = []
+        if score >= 90:
+            badges_earned.append("Excellence")
+        if score == 100:
+            badges_earned.append("Perfect Score")
+        if offline_mode:
+            badges_earned.append("Offline Learner")
+        
+        return Response({
+            'score': score,
+            'correct_answers': correct_count,
+            'total_questions': total_questions,
+            'badges_earned': badges_earned,
+            'offline_mode': offline_mode,
+            'sync_needed': offline_mode,
+            'message': 'Quiz completed!' + (' (Will sync when online)' if offline_mode else '')
+        })
+        
+    except Exception as e:
+        return Response({'error': f'Quiz submission failed: {str(e)}'}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def sync_offline_attempts(request):
+    """Sync offline quiz attempts when back online"""
+    try:
+        offline_attempts = request.data.get('offline_attempts', [])
+        synced_count = 0
+        errors = []
+        
+        student = request.user.student
+        
+        for attempt_data in offline_attempts:
+            try:
+                quiz_id = attempt_data.get('quiz_id')
+                quiz = Quiz.objects.get(id=quiz_id)
+                
+                # Check if this attempt already exists
+                existing = QuizAttempt.objects.filter(
+                    student=student,
+                    quiz=quiz,
+                    answers=attempt_data.get('answers', {}),
+                    offline_attempt=True
+                ).exists()
+                
+                if not existing:
+                    QuizAttempt.objects.create(
+                        student=student,
+                        quiz=quiz,
+                        answers=attempt_data.get('answers', {}),
+                        score=attempt_data.get('score', 0),
+                        offline_attempt=True,
+                        is_synced=True
+                    )
+                    synced_count += 1
+                
+            except Exception as e:
+                errors.append(f"Failed to sync attempt: {str(e)}")
+        
+        # Update student's last sync time
+        student.last_offline_sync = timezone.now()
+        student.save()
+        
+        # Log the sync operation
+        SyncLog.objects.create(
+            student=student,
+            sync_type='quiz_attempts',
+            status='success' if not errors else 'failed',
+            sync_data={'synced_count': synced_count, 'errors': errors}
+        )
+        
+        return Response({
+            'synced_count': synced_count,
+            'errors': errors,
+            'message': f'Successfully synced {synced_count} offline attempts'
+        })
+        
+    except Exception as e:
+        return Response({'error': f'Sync failed: {str(e)}'}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_offline_mode(request):
+    """Enable/disable offline mode for student"""
+    try:
+        offline_mode = request.data.get('offline_mode', False)
+        student = request.user.student
+        student.offline_mode = offline_mode
+        student.save()
+        
+        return Response({
+            'offline_mode': offline_mode,
+            'message': f'Offline mode {"enabled" if offline_mode else "disabled"}'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_offline_status(request):
+    """Get offline sync status and pending data"""
+    try:
+        student = request.user.student
+        
+        unsynced_attempts = QuizAttempt.objects.filter(
+            student=student,
+            is_synced=False
+        ).count()
+        
+        offline_sessions = OfflineSession.objects.filter(
+            student=student,
+            is_synced=False
+        ).count()
+        
+        return Response({
+            'offline_mode': student.offline_mode,
+            'unsynced_attempts': unsynced_attempts,
+            'offline_sessions': offline_sessions,
+            'last_sync': student.last_offline_sync.isoformat() if student.last_offline_sync else None,
+            'needs_sync': unsynced_attempts > 0 or offline_sessions > 0,
+            'student_id': student.student_id  # For offline identification
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+# ========== YOUR EXISTING VIEWS CONTINUE ==========
+
 class TeacherDashboardView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -181,7 +462,6 @@ class TeacherDashboardView(APIView):
         if quiz_id:
             queryset = queryset.filter(quiz_id=quiz_id)
         
-        # MERGED: Your friend's date filtering functionality
         if start_date and end_date:
             try:
                 start = parse_date(start_date)
@@ -193,7 +473,6 @@ class TeacherDashboardView(APIView):
         serializer = StudentProgressSerializer(queryset, many=True)
         return Response(serializer.data)
 
-# MERGED: Enhanced export with date filtering (your friend's feature)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def export_progress(request):
@@ -214,7 +493,6 @@ def export_progress(request):
     if quiz_id:
         queryset = queryset.filter(quiz_id=quiz_id)
     
-    # MERGED: Your friend's date filtering in export
     if start_date and end_date:
         try:
             start = parse_date(start_date)
@@ -224,31 +502,30 @@ def export_progress(request):
             return Response({'error': f'Invalid date format: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     writer = csv.writer(response)
-    writer.writerow(['Student', 'Quiz', 'Score', 'Completed At'])
+    writer.writerow(['Student', 'Quiz', 'Score', 'Completed At', 'Offline Mode'])
 
     for attempt in queryset:
         writer.writerow([
             attempt.student.user.get_full_name(),
             attempt.quiz.name,
             attempt.score,
-            attempt.completed_at.strftime('%Y-%m-%d %H:%M:%S')
+            attempt.completed_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'Yes' if attempt.offline_attempt else 'No'
         ])
 
     return response
 
-# YOUR: All class management views
+# CLASS MANAGEMENT VIEWS
 class ClassRoomViewSet(viewsets.ModelViewSet):
     serializer_class = ClassRoomSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Only show classes for the authenticated teacher
         if hasattr(self.request.user, 'teacher'):
             return ClassRoom.objects.filter(teacher=self.request.user.teacher).prefetch_related('enrollments')
         return ClassRoom.objects.none()
 
     def perform_create(self, serializer):
-        # Automatically assign the authenticated teacher when creating a class
         if hasattr(self.request.user, 'teacher'):
             serializer.save(teacher=self.request.user.teacher)
         else:
@@ -262,7 +539,6 @@ class ClassRoomViewSet(viewsets.ModelViewSet):
                 'classes': serializer.data
             })
         except Exception as e:
-            print(f"Error in ClassRoomViewSet.list: {e}")  # Debug log
             return Response({
                 'classes': [],
                 'error': str(e)
@@ -281,16 +557,12 @@ class ClassRoomViewSet(viewsets.ModelViewSet):
             self.perform_create(serializer)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
-            print(f"Error in ClassRoomViewSet.create: {e}")  # Debug log
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
 class ClassDetailView(APIView):
-    """
-    API endpoint for managing individual class operations
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, class_id):
@@ -310,308 +582,7 @@ class ClassDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def post(self, request, class_id):
-        """Add a student to this class"""
-        if not hasattr(request.user, 'teacher'):
-            return Response(
-                {'error': 'Only teachers can manage classes'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        try:
-            classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
-            student_id = request.data.get('student_id')
-            
-            if not student_id:
-                return Response(
-                    {'error': 'Student ID is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            student = get_object_or_404(Student, id=student_id)
-            enrollment, created = Enrollment.objects.get_or_create(
-                student=student,
-                classroom=classroom,
-                defaults={'active': True, 'progress': 0.0}
-            )
-            
-            if created:
-                return Response({'message': 'Student added successfully'})
-            else:
-                return Response(
-                    {'message': 'Student already in class'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        except Student.DoesNotExist:
-            return Response(
-                {'error': 'Student not found'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def delete(self, request, class_id):
-        """Remove a student from this class"""
-        if not hasattr(request.user, 'teacher'):
-            return Response(
-                {'error': 'Only teachers can manage classes'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        try:
-            classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
-            student_id = request.data.get('student_id')
-            
-            enrollment = get_object_or_404(
-                Enrollment, 
-                student_id=student_id, 
-                classroom=classroom
-            )
-            enrollment.delete()
-            return Response({'message': 'Student removed successfully'})
-        except Enrollment.DoesNotExist:
-            return Response(
-                {'error': 'Student not in this class'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def update_student_status(request, enrollment_id):
-    """Toggle active/inactive status of a student in a class"""
-    if not hasattr(request.user, 'teacher'):
-        return Response(
-            {'error': 'Only teachers can update student status'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    try:
-        enrollment = get_object_or_404(
-            Enrollment, 
-            id=enrollment_id, 
-            classroom__teacher=request.user.teacher
-        )
-        active_status = request.data.get('active')
-        
-        if active_status is not None:
-            enrollment.active = active_status
-            enrollment.save()
-            return Response({'message': 'Student status updated successfully'})
-        
-        return Response(
-            {'error': 'Active status required'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def update_student_progress(request, enrollment_id):
-    """Update progress of a student in a class"""
-    if not hasattr(request.user, 'teacher'):
-        return Response(
-            {'error': 'Only teachers can update student progress'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    try:
-        enrollment = get_object_or_404(
-            Enrollment, 
-            id=enrollment_id, 
-            classroom__teacher=request.user.teacher
-        )
-        progress = request.data.get('progress')
-        
-        if progress is not None and 0 <= progress <= 100:
-            enrollment.progress = progress
-            enrollment.save()
-            return Response({'message': 'Student progress updated successfully'})
-        
-        return Response(
-            {'error': 'Valid progress value (0-100) required'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_available_students(request):
-    """Get list of students that can be added to classes"""
-    if not hasattr(request.user, 'teacher'):
-        return Response(
-            {'error': 'Only teachers can access student list'},
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    try:
-        students = Student.objects.all()
-        serializer = StudentSerializer(students, many=True)
-        return Response({
-            'students': serializer.data
-        })
-    except Exception as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def class_detail_view(request, class_id):
-    """Get detailed information about a specific class"""
-    if not hasattr(request.user, 'teacher'):
-        return Response({'error': 'Only teachers can view class details'}, status=403)
-    
-    try:
-        classroom = get_object_or_404(
-            ClassRoom, 
-            id=class_id, 
-            teacher=request.user.teacher
-        )
-        
-        # Get class details with students
-        serializer = ClassRoomSerializer(classroom)
-        data = serializer.data
-        
-        # Add student details
-        enrollments = classroom.enrollments.all().select_related('student__user')
-        students_data = []
-        
-        for enrollment in enrollments:
-            students_data.append({
-                'enrollment_id': enrollment.id,
-                'student_id': enrollment.student.id,
-                'student_name': f"{enrollment.student.user.first_name} {enrollment.student.user.last_name}",
-                'username': enrollment.student.user.username,
-                'grade': enrollment.student.grade,
-                'progress': enrollment.progress,
-                'active': enrollment.active,
-                'last_active': enrollment.student.user.last_login.isoformat() if enrollment.student.user.last_login else None
-            })
-        
-        data['students'] = students_data
-        
-        return Response(data)
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def add_student_to_class(request, class_id):
-    """Add a student to a class"""
-    if not hasattr(request.user, 'teacher'):
-        return Response({'error': 'Only teachers can manage classes'}, status=403)
-    
-    try:
-        classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
-        student_id = request.data.get('student_id')
-        
-        if not student_id:
-            return Response({'error': 'Student ID is required'}, status=400)
-        
-        student = get_object_or_404(Student, id=student_id)
-        
-        # Check if student is already in class
-        if Enrollment.objects.filter(student=student, classroom=classroom).exists():
-            return Response({'error': 'Student already enrolled in this class'}, status=400)
-        
-        # Add student to class
-        enrollment = Enrollment.objects.create(
-            student=student,
-            classroom=classroom,
-            active=True,
-            progress=0.0
-        )
-        
-        return Response({
-            'message': 'Student added successfully',
-            'enrollment': {
-                'id': enrollment.id,
-                'student_name': f"{student.user.first_name} {student.user.last_name}",
-                'active': enrollment.active,
-                'progress': enrollment.progress
-            }
-        })
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
-
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated])
-def remove_student_from_class(request, class_id, enrollment_id):
-    """Remove a student from a class"""
-    if not hasattr(request.user, 'teacher'):
-        return Response({'error': 'Only teachers can manage classes'}, status=403)
-    
-    try:
-        classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
-        enrollment = get_object_or_404(Enrollment, id=enrollment_id, classroom=classroom)
-        
-        student_name = f"{enrollment.student.user.first_name} {enrollment.student.user.last_name}"
-        enrollment.delete()
-        
-        return Response({'message': f'{student_name} removed from class successfully'})
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
-
-@api_view(['PATCH'])
-@permission_classes([IsAuthenticated])
-def update_enrollment(request, enrollment_id):
-    """Update student enrollment (progress, status)"""
-    if not hasattr(request.user, 'teacher'):
-        return Response({'error': 'Only teachers can update enrollments'}, status=403)
-    
-    try:
-        enrollment = get_object_or_404(
-            Enrollment, 
-            id=enrollment_id, 
-            classroom__teacher=request.user.teacher
-        )
-        
-        # Update progress if provided
-        if 'progress' in request.data:
-            progress = request.data['progress']
-            if 0 <= progress <= 100:
-                enrollment.progress = progress
-            else:
-                return Response({'error': 'Progress must be between 0 and 100'}, status=400)
-        
-        # Update active status if provided
-        if 'active' in request.data:
-            enrollment.active = request.data['active']
-        
-        enrollment.save()
-        
-        return Response({
-            'message': 'Enrollment updated successfully',
-            'enrollment': {
-                'id': enrollment.id,
-                'progress': enrollment.progress,
-                'active': enrollment.active
-            }
-        })
-        
-    except Exception as e:
-        return Response({'error': str(e)}, status=500)
-    
+# VIDEO VIEWS
 class VideoListView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -622,7 +593,6 @@ class VideoListView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Filter by category if provided
         category_type = request.query_params.get('category')
         difficulty = request.query_params.get('difficulty')
         
@@ -645,8 +615,6 @@ class VideoDetailView(APIView):
     def get(self, request, video_id):
         try:
             video = get_object_or_404(Video, id=video_id)
-            
-            # Increment view count
             video.view_count += 1
             video.save()
             
@@ -663,12 +631,10 @@ class VideoProgressView(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, video_id):
-        """Update video progress"""
         try:
             video = get_object_or_404(Video, id=video_id)
             student = request.user.student
             
-            # Get or create progress record
             progress, created = VideoProgress.objects.get_or_create(
                 student=student,
                 video=video,
@@ -677,13 +643,12 @@ class VideoProgressView(APIView):
                 }
             )
             
-            # Update progress
             watch_time = request.data.get('watch_time_seconds', 0)
             completion_percentage = request.data.get('completion_percentage', 0)
             
             progress.watch_time_seconds = max(progress.watch_time_seconds, watch_time)
             progress.completion_percentage = completion_percentage
-            progress.completed = completion_percentage >= 80  # 80% completion threshold
+            progress.completed = completion_percentage >= 80
             progress.preferred_language = request.data.get('language', progress.preferred_language)
             
             progress.save()
@@ -707,9 +672,200 @@ class VideoCategoriesView(APIView):
             'categories': serializer.data
         })
 
+# Additional class management functions (add these if missing)
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_student_status(request, enrollment_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can update student status'}, status=403)
+    
+    try:
+        enrollment = get_object_or_404(
+            Enrollment, 
+            id=enrollment_id, 
+            classroom__teacher=request.user.teacher
+        )
+        active_status = request.data.get('active')
+        
+        if active_status is not None:
+            enrollment.active = active_status
+            enrollment.save()
+            return Response({'message': 'Student status updated successfully'})
+        
+        return Response({'error': 'Active status required'}, status=400)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_student_progress(request, enrollment_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can update student progress'}, status=403)
+    
+    try:
+        enrollment = get_object_or_404(
+            Enrollment, 
+            id=enrollment_id, 
+            classroom__teacher=request.user.teacher
+        )
+        progress = request.data.get('progress')
+        
+        if progress is not None and 0 <= progress <= 100:
+            enrollment.progress = progress
+            enrollment.save()
+            return Response({'message': 'Student progress updated successfully'})
+        
+        return Response({'error': 'Valid progress value (0-100) required'}, status=400)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_available_students(request):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can access student list'}, status=403)
+    
+    try:
+        students = Student.objects.all()
+        serializer = StudentSerializer(students, many=True)
+        return Response({'students': serializer.data})
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def class_detail_view(request, class_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can view class details'}, status=403)
+    
+    try:
+        classroom = get_object_or_404(
+            ClassRoom, 
+            id=class_id, 
+            teacher=request.user.teacher
+        )
+        
+        serializer = ClassRoomSerializer(classroom)
+        data = serializer.data
+        
+        enrollments = classroom.enrollments.all().select_related('student__user')
+        students_data = []
+        
+        for enrollment in enrollments:
+            students_data.append({
+                'enrollment_id': enrollment.id,
+                'student_id': enrollment.student.id,
+                'student_name': f"{enrollment.student.user.first_name} {enrollment.student.user.last_name}",
+                'username': enrollment.student.user.username,
+                'grade': enrollment.student.grade,
+                'progress': enrollment.progress,
+                'active': enrollment.active,
+                'last_active': enrollment.student.user.last_login.isoformat() if enrollment.student.user.last_login else None
+            })
+        
+        data['students'] = students_data
+        return Response(data)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_student_to_class(request, class_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can manage classes'}, status=403)
+    
+    try:
+        classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
+        student_id = request.data.get('student_id')
+        
+        if not student_id:
+            return Response({'error': 'Student ID is required'}, status=400)
+        
+        student = get_object_or_404(Student, id=student_id)
+        
+        if Enrollment.objects.filter(student=student, classroom=classroom).exists():
+            return Response({'error': 'Student already enrolled in this class'}, status=400)
+        
+        enrollment = Enrollment.objects.create(
+            student=student,
+            classroom=classroom,
+            active=True,
+            progress=0.0
+        )
+        
+        return Response({
+            'message': 'Student added successfully',
+            'enrollment': {
+                'id': enrollment.id,
+                'student_name': f"{student.user.first_name} {student.user.last_name}",
+                'active': enrollment.active,
+                'progress': enrollment.progress
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_student_from_class(request, class_id, enrollment_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can manage classes'}, status=403)
+    
+    try:
+        classroom = get_object_or_404(ClassRoom, id=class_id, teacher=request.user.teacher)
+        enrollment = get_object_or_404(Enrollment, id=enrollment_id, classroom=classroom)
+        
+        student_name = f"{enrollment.student.user.first_name} {enrollment.student.user.last_name}"
+        enrollment.delete()
+        
+        return Response({'message': f'{student_name} removed from class successfully'})
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_enrollment(request, enrollment_id):
+    if not hasattr(request.user, 'teacher'):
+        return Response({'error': 'Only teachers can update enrollments'}, status=403)
+    
+    try:
+        enrollment = get_object_or_404(
+            Enrollment, 
+            id=enrollment_id, 
+            classroom__teacher=request.user.teacher
+        )
+        
+        if 'progress' in request.data:
+            progress = request.data['progress']
+            if 0 <= progress <= 100:
+                enrollment.progress = progress
+            else:
+                return Response({'error': 'Progress must be between 0 and 100'}, status=400)
+        
+        if 'active' in request.data:
+            enrollment.active = request.data['active']
+        
+        enrollment.save()
+        
+        return Response({
+            'message': 'Enrollment updated successfully',
+            'enrollment': {
+                'id': enrollment.id,
+                'progress': enrollment.progress,
+                'active': enrollment.active
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
 # from django.shortcuts import get_object_or_404
 # from django.contrib.auth import authenticate
-# from rest_framework import viewsets, status, permissions
+# from rest_framework import viewsets, status, permissions, serializers
 # from rest_framework.decorators import api_view, permission_classes
 # from rest_framework.response import Response
 # from rest_framework.authtoken.models import Token
@@ -717,16 +873,28 @@ class VideoCategoriesView(APIView):
 # from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 # import csv
 # from django.http import HttpResponse
+# from django.utils.dateparse import parse_date
+# from django.utils import timezone
+# import uuid
 
-# from .models import Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge
+# # ADD the new offline models to imports
+# from .models import (
+#     Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment, 
+#     Video, VideoCategory, VideoProgress,
+#     # NEW OFFLINE MODELS
+#     OfflineSession, OfflineContent, SyncLog
+# )
 # from .serializers import (
-#     QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer,
-#     BadgeSerializer, QuizAttemptSerializer, StudentProgressSerializer,StudentRegistrationSerializer,
+#     QuizSerializer, QuestionSerializer, StudentSerializer, TeacherSerializer, VideoCategorySerializer, 
+#     VideoSerializer, VideoProgressSerializer, BadgeSerializer, QuizAttemptSerializer, ClassRoomSerializer, 
+#     EnrollmentSerializer, StudentProgressSerializer, StudentRegistrationSerializer,
 #     TeacherRegistrationSerializer, UserSerializer, MyProgressSerializer, ErrorSerializer
 # )
 
+# # ========== EXISTING VIEWS (KEEP AS IS) ==========
+
 # @api_view(['POST'])
-# @permission_classes([AllowAny]) # Anyone can access this page to sign up
+# @permission_classes([AllowAny])
 # def student_registration_view(request):
 #     serializer = StudentRegistrationSerializer(data=request.data)
 #     if serializer.is_valid():
@@ -735,7 +903,7 @@ class VideoCategoriesView(APIView):
 #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # @api_view(['POST'])
-# @permission_classes([AllowAny]) # Anyone can access this page to sign up
+# @permission_classes([AllowAny])
 # def teacher_registration_view(request):
 #     serializer = TeacherRegistrationSerializer(data=request.data)
 #     if serializer.is_valid():
@@ -791,19 +959,21 @@ class VideoCategoriesView(APIView):
 #     serializer = MyProgressSerializer(student)
 #     return Response(serializer.data)
 
-
 # @api_view(['POST'])
 # @permission_classes([IsAuthenticated])
 # def logout_view(request):
 #     request.user.auth_token.delete()
 #     return Response({'message': 'Successfully logged out'})
 
+# # ========== UPDATED QUIZ VIEWS WITH OFFLINE SUPPORT ==========
+
 # class QuizViewSet(viewsets.ModelViewSet):
 #     serializer_class = QuizSerializer
 #     permission_classes = [IsAuthenticatedOrReadOnly]
 
 #     def get_queryset(self):
-#         return Quiz.objects.prefetch_related('questions').all()
+#         # ADD filtering for offline available quizzes
+#         return Quiz.objects.filter(offline_available=True).prefetch_related('questions')
 
 #     def list(self, request, *args, **kwargs):
 #         queryset = self.get_queryset()
@@ -819,15 +989,15 @@ class VideoCategoriesView(APIView):
 #         return Response(serializer.data)
 
 # class QuizSubmissionView(APIView):
-#     """
-#     API endpoint for submitting quiz answers
-#     """
+#     """Enhanced API endpoint for submitting quiz answers with offline support"""
 #     permission_classes = [IsAuthenticated]
 
 #     def post(self, request, *args, **kwargs):
 #         try:
 #             quiz_id = request.data.get('quiz_id')
 #             answers = request.data.get('answers', {})
+#             # ADD offline mode detection
+#             offline_mode = request.data.get('offline_mode', False)
 
 #             quiz = get_object_or_404(Quiz, id=quiz_id)
 #             student = request.user.student
@@ -843,25 +1013,44 @@ class VideoCategoriesView(APIView):
 
 #             score = (correct_count / total_questions * 100) if total_questions > 0 else 0
 
-#             # Create new attempt and let the model handle attempt_number
+#             # CREATE attempt with offline support
 #             attempt = QuizAttempt(
 #                 student=student,
 #                 quiz=quiz,
 #                 answers=answers,
-#                 score=score
+#                 score=score,
+#                 offline_attempt=offline_mode,  # ADD offline flag
+#                 is_synced=not offline_mode     # ADD sync flag
 #             )
-#             attempt.save() # This will call the custom save method
+#             attempt.save()
 
-#             # Award badges
+#             # Award badges with offline badge
+#             badges_earned = []
 #             if score == 100:
-#                 badge, _ = Badge.objects.get_or_create(name='Perfect Score')
+#                 badge, _ = Badge.objects.get_or_create(
+#                     name='Perfect Score',
+#                     defaults={'description': 'Scored 100% on a quiz'}
+#                 )
 #                 StudentBadge.objects.get_or_create(student=student, badge=badge)
+#                 badges_earned.append('Perfect Score')
+            
+#             # ADD offline learner badge
+#             if offline_mode:
+#                 badge, _ = Badge.objects.get_or_create(
+#                     name='Offline Learner',
+#                     defaults={'description': 'Completed quiz in offline mode'}
+#                 )
+#                 StudentBadge.objects.get_or_create(student=student, badge=badge)
+#                 badges_earned.append('Offline Learner')
 
 #             return Response({
 #                 'attempt_number': attempt.attempt_number,
 #                 'score': score,
 #                 'correct_answers': correct_count,
 #                 'total_questions': total_questions,
+#                 'badges_earned': badges_earned,  # ADD badges info
+#                 'offline_mode': offline_mode,    # ADD offline status
+#                 'sync_status': 'synced' if not offline_mode else 'pending'
 #             }, status=status.HTTP_201_CREATED)
 
 #         except Exception as e:
@@ -869,7 +1058,257 @@ class VideoCategoriesView(APIView):
 #                 {'error': str(e)},
 #                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
 #             )
+
+# # ========== NEW OFFLINE ENDPOINTS ==========
+
+# @api_view(['GET'])
+# @permission_classes([AllowAny])
+# def download_offline_content(request):
+#     """Download all content for offline use"""
+#     try:
+#         # Get all offline-available quizzes
+#         quizzes = Quiz.objects.filter(
+#             is_active=True, 
+#             offline_available=True
+#         ).prefetch_related('questions')
         
+#         # Get all offline-available videos
+#         videos = Video.objects.filter(offline_available=True)
+        
+#         offline_content = {
+#             'quizzes': [],
+#             'videos': [],
+#             'sync_timestamp': timezone.now().isoformat(),
+#             'version': 1
+#         }
+        
+#         # Prepare quiz data (hide correct answers for security)
+#         for quiz in quizzes:
+#             quiz_data = {
+#                 'id': str(quiz.id),
+#                 'name': quiz.name,
+#                 'subject': quiz.subject,
+#                 'time_limit': quiz.time_limit,
+#                 'questions': []
+#             }
+            
+#             for question in quiz.questions.all():
+#                 quiz_data['questions'].append({
+#                     'id': str(question.id),
+#                     'text_en': question.text_en,
+#                     'text_pa': question.text_pa,
+#                     'options': question.options,
+#                     # Don't include correct_answer for offline security
+#                 })
+            
+#             offline_content['quizzes'].append(quiz_data)
+        
+#         # Prepare video data
+#         for video in videos:
+#             video_data = {
+#                 'id': str(video.id),
+#                 'title': video.title,
+#                 'title_pa': video.title_pa,
+#                 'description': video.description,
+#                 'category': video.category.category_type,
+#                 'difficulty': video.difficulty,
+#                 'duration_minutes': video.duration_minutes,
+#                 'video_urls': {
+#                     'en': video.get_video_url('en'),
+#                     'hi': video.get_video_url('hi'),
+#                     'pa': video.get_video_url('pa'),
+#                 }
+#             }
+#             offline_content['videos'].append(video_data)
+        
+#         return Response(offline_content)
+        
+#     except Exception as e:
+#         return Response({'error': f'Failed to download content: {str(e)}'}, status=500)
+
+# @api_view(['POST'])
+# @permission_classes([AllowAny])
+# def submit_offline_quiz(request):
+#     """Submit quiz that works both online and offline"""
+#     try:
+#         quiz_id = request.data.get('quiz_id')
+#         answers = request.data.get('answers', {})
+#         offline_mode = request.data.get('offline_mode', False)
+#         student_id = request.data.get('student_id')  # For offline identification
+        
+#         quiz = get_object_or_404(Quiz, id=quiz_id)
+        
+#         # Calculate score
+#         correct_count = 0
+#         total_questions = quiz.questions.count()
+        
+#         for question in quiz.questions.all():
+#             student_answer = answers.get(str(question.id))
+#             if student_answer == question.correct_answer:
+#                 correct_count += 1
+        
+#         score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+        
+#         # Handle online vs offline submission
+#         if request.user.is_authenticated and hasattr(request.user, 'student'):
+#             # Online user - save normally
+#             attempt = QuizAttempt.objects.create(
+#                 student=request.user.student,
+#                 quiz=quiz,
+#                 answers=answers,
+#                 score=score,
+#                 offline_attempt=offline_mode,
+#                 is_synced=not offline_mode
+#             )
+#         elif offline_mode and student_id:
+#             # Offline mode - save to offline session
+#             try:
+#                 student = Student.objects.get(student_id=student_id)
+#                 offline_session = OfflineSession.objects.create(
+#                     student=student,
+#                     session_id=str(uuid.uuid4()),
+#                     session_data={
+#                         'quiz_id': str(quiz_id),
+#                         'answers': answers,
+#                         'score': score,
+#                         'completed_at': timezone.now().isoformat()
+#                     },
+#                     is_synced=False
+#                 )
+#             except Student.DoesNotExist:
+#                 return Response({'error': 'Student not found'}, status=404)
+        
+#         # Award badges
+#         badges_earned = []
+#         if score >= 90:
+#             badges_earned.append("Excellence")
+#         if score == 100:
+#             badges_earned.append("Perfect Score")
+#         if offline_mode:
+#             badges_earned.append("Offline Learner")
+        
+#         return Response({
+#             'score': score,
+#             'correct_answers': correct_count,
+#             'total_questions': total_questions,
+#             'badges_earned': badges_earned,
+#             'offline_mode': offline_mode,
+#             'sync_needed': offline_mode,
+#             'message': 'Quiz completed!' + (' (Will sync when online)' if offline_mode else '')
+#         })
+        
+#     except Exception as e:
+#         return Response({'error': f'Quiz submission failed: {str(e)}'}, status=500)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def sync_offline_attempts(request):
+#     """Sync offline quiz attempts when back online"""
+#     try:
+#         offline_attempts = request.data.get('offline_attempts', [])
+#         synced_count = 0
+#         errors = []
+        
+#         student = request.user.student
+        
+#         for attempt_data in offline_attempts:
+#             try:
+#                 quiz_id = attempt_data.get('quiz_id')
+#                 quiz = Quiz.objects.get(id=quiz_id)
+                
+#                 # Check if this attempt already exists
+#                 existing = QuizAttempt.objects.filter(
+#                     student=student,
+#                     quiz=quiz,
+#                     answers=attempt_data.get('answers', {}),
+#                     offline_attempt=True
+#                 ).exists()
+                
+#                 if not existing:
+#                     QuizAttempt.objects.create(
+#                         student=student,
+#                         quiz=quiz,
+#                         answers=attempt_data.get('answers', {}),
+#                         score=attempt_data.get('score', 0),
+#                         offline_attempt=True,
+#                         is_synced=True
+#                     )
+#                     synced_count += 1
+                
+#             except Exception as e:
+#                 errors.append(f"Failed to sync attempt: {str(e)}")
+        
+#         # Update student's last sync time
+#         student.last_offline_sync = timezone.now()
+#         student.save()
+        
+#         # Log the sync operation
+#         SyncLog.objects.create(
+#             student=student,
+#             sync_type='quiz_attempts',
+#             status='success' if not errors else 'failed',
+#             sync_data={'synced_count': synced_count, 'errors': errors}
+#         )
+        
+#         return Response({
+#             'synced_count': synced_count,
+#             'errors': errors,
+#             'message': f'Successfully synced {synced_count} offline attempts'
+#         })
+        
+#     except Exception as e:
+#         return Response({'error': f'Sync failed: {str(e)}'}, status=500)
+
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def toggle_offline_mode(request):
+#     """Enable/disable offline mode for student"""
+#     try:
+#         offline_mode = request.data.get('offline_mode', False)
+#         student = request.user.student
+#         student.offline_mode = offline_mode
+#         student.save()
+        
+#         return Response({
+#             'offline_mode': offline_mode,
+#             'message': f'Offline mode {"enabled" if offline_mode else "disabled"}'
+#         })
+        
+#     except Exception as e:
+#         return Response({'error': str(e)}, status=500)
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def get_offline_status(request):
+#     """Get offline sync status and pending data"""
+#     try:
+#         student = request.user.student
+        
+#         unsynced_attempts = QuizAttempt.objects.filter(
+#             student=student,
+#             is_synced=False
+#         ).count()
+        
+#         offline_sessions = OfflineSession.objects.filter(
+#             student=student,
+#             is_synced=False
+#         ).count()
+        
+#         return Response({
+#             'offline_mode': student.offline_mode,
+#             'unsynced_attempts': unsynced_attempts,
+#             'offline_sessions': offline_sessions,
+#             'last_sync': student.last_offline_sync.isoformat() if student.last_offline_sync else None,
+#             'needs_sync': unsynced_attempts > 0 or offline_sessions > 0,
+#             'student_id': student.student_id  # For offline identification
+#         })
+        
+#     except Exception as e:
+#         return Response({'error': str(e)}, status=500)
+
+# # ========== KEEP ALL YOUR EXISTING VIEWS BELOW ==========
+# # (Teacher Dashboard, Class Management, Video Views, etc. - exactly as they are)
+
 # class TeacherDashboardView(APIView):
 #     permission_classes = [IsAuthenticated]
     
@@ -881,42 +1320,26 @@ class VideoCategoriesView(APIView):
 #             )
         
 #         quiz_id = request.query_params.get('quiz_id')
-#         # Use prefetch_related to optimize queries
+#         start_date = request.query_params.get('start_date')
+#         end_date = request.query_params.get('end_date')
+
 #         queryset = QuizAttempt.objects.select_related('student__user').prefetch_related('student__studentbadge_set__badge').all()
         
 #         if quiz_id:
 #             queryset = queryset.filter(quiz_id=quiz_id)
         
+#         if start_date and end_date:
+#             try:
+#                 start = parse_date(start_date)
+#                 end = parse_date(end_date)
+#                 queryset = queryset.filter(completed_at__date__range=[start, end])
+#             except Exception as e:
+#                 return Response({'error': f'Invalid date format: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        
 #         serializer = StudentProgressSerializer(queryset, many=True)
 #         return Response(serializer.data)
 
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def export_progress(request):
-#     if not hasattr(request.user, 'teacher'):
-#         return Response(
-#             {'error': 'Only teachers can access this endpoint'},
-#             status=status.HTTP_403_FORBIDDEN
-#         )
+# ADD the rest of your existing views exactly as they are...
+# ClassRoomViewSet, VideoListView, etc. - no changes needed to them
 
-#     response = HttpResponse(content_type='text/csv')
-#     response['Content-Disposition'] = 'attachment; filename="student_progress.csv"'
-
-#     writer = csv.writer(response)
-#     writer.writerow(['Student', 'Quiz', 'Score', 'Completed At'])
-
-#     quiz_id = request.query_params.get('quiz_id')
-#     queryset = QuizAttempt.objects.all()
-#     if quiz_id:
-#         queryset = queryset.filter(quiz_id=quiz_id)
-
-#     for attempt in queryset:
-#         writer.writerow([
-#             attempt.student.user.get_full_name(),
-#             attempt.quiz.name,
-#             attempt.score,
-#             attempt.completed_at.strftime('%Y-%m-%d %H:%M:%S')
-#         ])
-
-#     return response
-
+# [Include all your remaining existing views here - they work unchanged]
