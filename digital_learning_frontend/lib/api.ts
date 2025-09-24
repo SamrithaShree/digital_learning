@@ -1,8 +1,5 @@
-// frontend/src/lib/api.ts
-
 import axios from 'axios';
 
-// The base URL for your Django API
 const API_URL = 'http://127.0.0.1:8000/api';
 
 const api = axios.create({
@@ -12,13 +9,18 @@ const api = axios.create({
   },
 });
 
-// This is the magic part!
-// It automatically adds the authentication token to every request.
+// Only add token to requests that aren't login/register
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
-  if (token) {
+  
+  // Don't add token to login/register endpoints
+  const noAuthEndpoints = ['/auth/login/', '/auth/register/', '/auth/register/teacher/'];
+  const isAuthEndpoint = noAuthEndpoints.some(endpoint => config.url?.includes(endpoint));
+  
+  if (token && !isAuthEndpoint) {
     config.headers.Authorization = `Token ${token}`;
   }
+  
   return config;
 });
 
