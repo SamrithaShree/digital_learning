@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "target": "ES6",
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["../frontend/next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../frontend/app/layout.tsx", "../frontend/app/page.tsx", "../frontend/app/help/page.tsx", "../frontend/components/auth/student-auth-page.tsx", "../frontend/components/auth/teacher-auth-page.tsx", "../frontend/components/student/student-dashboard.tsx", "../frontend/components/student/quiz-page.tsx", "../frontend/components/student/lesson-detail-page.tsx", "../frontend/components/teacher/analytics-reporting.tsx", "../frontend/components/teacher/content-management-system.tsx", "../frontend/components/teacher/student-detail-page.tsx", "../frontend/components/shared/navigation-header.tsx", "../frontend/components/shared/video-player.tsx", "../frontend/components/shared/profile-page.tsx", "../frontend/components/shared/offline-sync-engine.tsx", "../frontend/components/providers/theme-provider.tsx", "../frontend/components/get-started/get-started-page.tsx", "../frontend/lib/api/api.ts", "../frontend/lib/api/offlineAPI.ts", "../frontend/lib/utils/utils.ts"],
+  "exclude": ["../digital_learning_frontend/node_modules"]
+}
