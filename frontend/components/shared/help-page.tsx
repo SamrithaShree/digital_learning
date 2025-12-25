@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { NavigationHeader } from "../../frontend/components/shared/navigation-header"
+import { NavigationHeader } from "./navigation-header"
 import { Search, Phone, Mail, MessageCircle, Book, Video, Users } from "lucide-react"
 
 export function HelpCenter() {
