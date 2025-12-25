@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import api from "@/lib/api"
+import api from "@/lib/api/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +31,7 @@ import {
   X,
   LogOut, // Added this import
 } from "lucide-react"
-import { NavigationHeader } from "./navigation-header"
+import { NavigationHeader } from "../shared/navigation-header"
 
 // Real data interfaces from backend
 interface StudentProgress {

@@ -1,0 +1,32 @@
+digital_learning_backend/venv/
+__pycache__/
+*.pyc
+.env
+
+# ---- Python cache ----
+__pycache__/
+*.py[cod]
+
+# ---- Django stuff ----
+db.sqlite3
+*.sqlite3
+
+# Migration cache (NOT migration files)
+*/migrations/__pycache__/
+
+# ---- Virtual environment ----
+venv/
+.env/
+.env.*
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+.DS_Store
+
+# ---- Logs ----
+*.log
+
+# ---- Media / static (if generated) ----
+media/
+staticfiles/

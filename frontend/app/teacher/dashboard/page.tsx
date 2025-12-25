@@ -1,6 +1,6 @@
 // src/app/teacher/dashboard/page.tsx
 
-import { TeacherDashboard } from "@/components/teacher-dashboard" // This path is based on your file structure
+import { TeacherDashboard } from "@/components/teacher/teacher-dashboard" 
 
 export default function TeacherDashboardPage() {
   // This page simply renders your main teacher dashboard component.

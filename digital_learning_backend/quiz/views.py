@@ -6,17 +6,18 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
+from django.views.decorators.csrf import csrf_exempt  # ADD THIS
+from django.utils.decorators import method_decorator  # ADD THIS
 import csv
 from django.http import HttpResponse
 from django.utils.dateparse import parse_date
 from django.utils import timezone
 import uuid
 
-# ADD the new offline models to imports
+# Models import
 from .models import (
     Quiz, Question, Student, Teacher, Badge, QuizAttempt, StudentBadge, ClassRoom, Enrollment, 
     Video, VideoCategory, VideoProgress,
-    # NEW OFFLINE MODELS
     OfflineSession, OfflineContent, SyncLog
 )
 from .serializers import (
@@ -26,29 +27,57 @@ from .serializers import (
     TeacherRegistrationSerializer, UserSerializer, MyProgressSerializer, ErrorSerializer
 )
 
-# ========== EXISTING VIEWS (KEEP AS IS) ==========
+# ========== AUTHENTICATION VIEWS (FIXED) ==========
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def student_registration_view(request):
+    """Student registration endpoint - no authentication required"""
     serializer = StudentRegistrationSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        user = serializer.save()
+        # Create token for immediate login
+        token, _ = Token.objects.get_or_create(user=user)
+        
+        # Get student profile
+        student = user.student
+        student_data = StudentSerializer(student).data
+        
+        return Response({
+            'token': token.key,
+            'user_info': student_data,
+            'role': 'student'
+        }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def teacher_registration_view(request):
+    """Teacher registration endpoint - no authentication required"""
     serializer = TeacherRegistrationSerializer(data=request.data)
+    
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        user = serializer.save()
+        token, _ = Token.objects.get_or_create(user=user)
+        
+        teacher = user.teacher
+        teacher_data = TeacherSerializer(teacher).data
+        
+        return Response({
+            'token': token.key,
+            'user_info': teacher_data,
+            'role': 'teacher'
+        }, status=status.HTTP_201_CREATED)
+    
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([AllowAny])  # KEEP THIS
+@csrf_exempt  # ADD THIS to exempt from CSRF
 def login_view(request):
+    """Login endpoint - no authentication required"""
     print("LOGIN ATTEMPT:", request.data)
     username = request.data.get('username')
     password = request.data.get('password')
@@ -100,14 +129,13 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({'message': 'Successfully logged out'})
 
-# ========== UPDATED QUIZ VIEWS WITH OFFLINE SUPPORT ==========
+# ========== QUIZ VIEWS ==========
 
 class QuizViewSet(viewsets.ModelViewSet):
     serializer_class = QuizSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        # ADD filtering for offline available quizzes
         return Quiz.objects.filter(offline_available=True).prefetch_related('questions')
 
     def list(self, request, *args, **kwargs):
@@ -123,6 +151,7 @@ class QuizViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(quiz)
         return Response(serializer.data)
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class QuizSubmissionView(APIView):
     """Enhanced API endpoint for submitting quiz answers with offline support"""
     permission_classes = [IsAuthenticated]
@@ -131,7 +160,6 @@ class QuizSubmissionView(APIView):
         try:
             quiz_id = request.data.get('quiz_id')
             answers = request.data.get('answers', {})
-            # ADD offline mode detection
             offline_mode = request.data.get('offline_mode', False)
 
             quiz = get_object_or_404(Quiz, id=quiz_id)
@@ -154,12 +182,12 @@ class QuizSubmissionView(APIView):
                 quiz=quiz,
                 answers=answers,
                 score=score,
-                offline_attempt=offline_mode,  # ADD offline flag
-                is_synced=not offline_mode     # ADD sync flag
+                offline_attempt=offline_mode,
+                is_synced=not offline_mode
             )
             attempt.save()
 
-            # Award badges with offline badge
+            # Award badges
             badges_earned = []
             if score == 100:
                 badge, _ = Badge.objects.get_or_create(
@@ -169,7 +197,6 @@ class QuizSubmissionView(APIView):
                 StudentBadge.objects.get_or_create(student=student, badge=badge)
                 badges_earned.append('Perfect Score')
             
-            # ADD offline learner badge
             if offline_mode:
                 badge, _ = Badge.objects.get_or_create(
                     name='Offline Learner',
@@ -183,8 +210,8 @@ class QuizSubmissionView(APIView):
                 'score': score,
                 'correct_answers': correct_count,
                 'total_questions': total_questions,
-                'badges_earned': badges_earned,  # ADD badges info
-                'offline_mode': offline_mode,    # ADD offline status
+                'badges_earned': badges_earned,
+                'offline_mode': offline_mode,
                 'sync_status': 'synced' if not offline_mode else 'pending'
             }, status=status.HTTP_201_CREATED)
 
@@ -194,20 +221,19 @@ class QuizSubmissionView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# ========== NEW OFFLINE ENDPOINTS ==========
+# ========== OFFLINE ENDPOINTS ==========
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@csrf_exempt  # ADD THIS
 def download_offline_content(request):
     """Download all content for offline use"""
     try:
-        # Get all offline-available quizzes
         quizzes = Quiz.objects.filter(
             is_active=True, 
             offline_available=True
         ).prefetch_related('questions')
         
-        # Get all offline-available videos
         videos = Video.objects.filter(offline_available=True)
         
         offline_content = {
@@ -217,7 +243,6 @@ def download_offline_content(request):
             'version': 1
         }
         
-        # Prepare quiz data (hide correct answers for security)
         for quiz in quizzes:
             quiz_data = {
                 'id': str(quiz.id),
@@ -233,12 +258,10 @@ def download_offline_content(request):
                     'text_en': question.text_en,
                     'text_pa': question.text_pa,
                     'options': question.options,
-                    # Don't include correct_answer for offline security
                 })
             
             offline_content['quizzes'].append(quiz_data)
         
-        # Prepare video data
         for video in videos:
             video_data = {
                 'id': str(video.id),
@@ -263,17 +286,17 @@ def download_offline_content(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt  # ADD THIS
 def submit_offline_quiz(request):
     """Submit quiz that works both online and offline"""
     try:
         quiz_id = request.data.get('quiz_id')
         answers = request.data.get('answers', {})
         offline_mode = request.data.get('offline_mode', False)
-        student_id = request.data.get('student_id')  # For offline identification
+        student_id = request.data.get('student_id')
         
         quiz = get_object_or_404(Quiz, id=quiz_id)
         
-        # Calculate score
         correct_count = 0
         total_questions = quiz.questions.count()
         
@@ -284,9 +307,7 @@ def submit_offline_quiz(request):
         
         score = (correct_count / total_questions * 100) if total_questions > 0 else 0
         
-        # Handle online vs offline submission
         if request.user.is_authenticated and hasattr(request.user, 'student'):
-            # Online user - save normally
             attempt = QuizAttempt.objects.create(
                 student=request.user.student,
                 quiz=quiz,
@@ -296,7 +317,6 @@ def submit_offline_quiz(request):
                 is_synced=not offline_mode
             )
         elif offline_mode and student_id:
-            # Offline mode - save to offline session
             try:
                 student = Student.objects.get(student_id=student_id)
                 offline_session = OfflineSession.objects.create(
@@ -313,7 +333,6 @@ def submit_offline_quiz(request):
             except Student.DoesNotExist:
                 return Response({'error': 'Student not found'}, status=404)
         
-        # Award badges
         badges_earned = []
         if score >= 90:
             badges_earned.append("Excellence")
@@ -351,7 +370,6 @@ def sync_offline_attempts(request):
                 quiz_id = attempt_data.get('quiz_id')
                 quiz = Quiz.objects.get(id=quiz_id)
                 
-                # Check if this attempt already exists
                 existing = QuizAttempt.objects.filter(
                     student=student,
                     quiz=quiz,
@@ -373,11 +391,9 @@ def sync_offline_attempts(request):
             except Exception as e:
                 errors.append(f"Failed to sync attempt: {str(e)}")
         
-        # Update student's last sync time
         student.last_offline_sync = timezone.now()
         student.save()
         
-        # Log the sync operation
         SyncLog.objects.create(
             student=student,
             sync_type='quiz_attempts',
@@ -435,14 +451,15 @@ def get_offline_status(request):
             'offline_sessions': offline_sessions,
             'last_sync': student.last_offline_sync.isoformat() if student.last_offline_sync else None,
             'needs_sync': unsynced_attempts > 0 or offline_sessions > 0,
-            'student_id': student.student_id  # For offline identification
+            'student_id': student.student_id
         })
         
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-# ========== YOUR EXISTING VIEWS CONTINUE ==========
+# ========== TEACHER DASHBOARD ==========
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class TeacherDashboardView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -515,7 +532,8 @@ def export_progress(request):
 
     return response
 
-# CLASS MANAGEMENT VIEWS
+# ========== CLASS MANAGEMENT ==========
+
 class ClassRoomViewSet(viewsets.ModelViewSet):
     serializer_class = ClassRoomSerializer
     permission_classes = [IsAuthenticated]
@@ -562,6 +580,7 @@ class ClassRoomViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class ClassDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -582,7 +601,9 @@ class ClassDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# VIDEO VIEWS
+# ========== VIDEO VIEWS ==========
+
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class VideoListView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -609,6 +630,7 @@ class VideoListView(APIView):
             'videos': serializer.data
         })
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class VideoDetailView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -627,6 +649,7 @@ class VideoDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class VideoProgressView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -662,6 +685,7 @@ class VideoProgressView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+@method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class VideoCategoriesView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -672,9 +696,11 @@ class VideoCategoriesView(APIView):
             'categories': serializer.data
         })
 
-# Additional class management functions (add these if missing)
+# ========== ADDITIONAL CLASS MANAGEMENT FUNCTIONS ==========
+
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt  # ADD THIS
 def update_student_status(request, enrollment_id):
     if not hasattr(request.user, 'teacher'):
         return Response({'error': 'Only teachers can update student status'}, status=403)
@@ -698,6 +724,7 @@ def update_student_status(request, enrollment_id):
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt  # ADD THIS
 def update_student_progress(request, enrollment_id):
     if not hasattr(request.user, 'teacher'):
         return Response({'error': 'Only teachers can update student progress'}, status=403)
@@ -771,6 +798,7 @@ def class_detail_view(request, class_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt  # ADD THIS
 def add_student_to_class(request, class_id):
     if not hasattr(request.user, 'teacher'):
         return Response({'error': 'Only teachers can manage classes'}, status=403)
@@ -809,6 +837,7 @@ def add_student_to_class(request, class_id):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt  # ADD THIS
 def remove_student_from_class(request, class_id, enrollment_id):
     if not hasattr(request.user, 'teacher'):
         return Response({'error': 'Only teachers can manage classes'}, status=403)
@@ -827,6 +856,7 @@ def remove_student_from_class(request, class_id, enrollment_id):
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
+@csrf_exempt  # ADD THIS
 def update_enrollment(request, enrollment_id):
     if not hasattr(request.user, 'teacher'):
         return Response({'error': 'Only teachers can update enrollments'}, status=403)
