@@ -127,7 +127,7 @@ export function StudentDashboard() {
       descriptionPa: "ਇੰਟਰਐਕਟਿਵ ਕਵਿਜ਼ਾਂ ਨਾਲ ਆਪਣੇ ਗਿਆਨ ਦੀ ਜਾਂਚ ਕਰੋ",
       icon: <Brain className="w-8 h-8" />,
       color: "from-purple-500 to-pink-500",
-      path: "/quizzes",
+      path: "/student/quiz-center/",
       completed: false,
       progress: 0
     }
