@@ -31,3 +31,5 @@ env/
 # ---- Media / static (if generated) ----
 media/
 staticfiles/
+
+pyrightconfig.json
