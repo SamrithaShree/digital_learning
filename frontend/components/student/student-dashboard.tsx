@@ -113,7 +113,7 @@ export function StudentDashboard() {
       descriptionPa: "ਪ੍ਰੋਗਰਾਮਿੰਗ ਅਤੇ ਤਕਨੀਕੀ ਭਾਸ਼ਾਵਾਂ ਦੀ ਖੋਜ ਕਰੋ",
       icon: <Code className="w-8 h-8" />,
       color: "from-green-500 to-emerald-500",
-      path: "/student/stem-learning",
+      path: "/student/lessons/stem-learning",
       completed: false,
       progress: 0
     },
@@ -235,7 +235,7 @@ export function StudentDashboard() {
     })
 
     setTimeout(() => {
-      router.push('/quizzes')
+      router.push('/quizzes/')
     }, 1000)
   }
 

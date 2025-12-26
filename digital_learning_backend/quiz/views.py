@@ -149,7 +149,7 @@ class QuizViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         quiz = get_object_or_404(queryset, pk=pk)
         serializer = self.get_serializer(quiz)
-        return Response(serializer.data)
+        return Response({"quiz": serializer.data})
 
 @method_decorator(csrf_exempt, name='dispatch')  # ADD THIS
 class QuizSubmissionView(APIView):

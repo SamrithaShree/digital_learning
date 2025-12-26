@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import api from "@/lib/api"
+import api from "@/lib/api/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { VideoPlayer } from "./video-player"
+import { VideoPlayer } from "../shared/video-player"
 import { ArrowLeft, TreePine, Play, Award, Video as VideoIcon, List, Users } from "lucide-react"
 
 interface Video {

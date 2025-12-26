@@ -42,21 +42,48 @@ export function QuizListPage() {
 
   const fetchQuizzes = async () => {
     try {
+      setLoading(true)
+      
       const response = await api.get('/quizzes/')
       
-      if (Array.isArray(response.data)) {
-        setQuizzes(response.data)
-      } else if (response.data?.results) {
-        setQuizzes(response.data.results)
-      } else {
+      console.log('🔍 Full API Response:', response)
+      console.log('📦 Response Data:', response.data)
+      
+      // Handle both response formats
+      let quizData = response.data
+      
+      // If wrapped in "quizzes" key
+      if (quizData.quizzes && Array.isArray(quizData.quizzes)) {
+        console.log('✅ Found quizzes in data.quizzes:', quizData.quizzes.length)
+        setQuizzes(quizData.quizzes)
+      }
+      // If direct array
+      else if (Array.isArray(quizData)) {
+        console.log('✅ Found direct array:', quizData.length)
+        setQuizzes(quizData)
+      }
+      // If paginated results
+      else if (quizData.results && Array.isArray(quizData.results)) {
+        console.log('✅ Found paginated results:', quizData.results.length)
+        setQuizzes(quizData.results)
+      }
+      // No quizzes found
+      else {
+        console.error('❌ Unexpected response format:', quizData)
         setQuizzes([])
+        toast({
+          title: "Error",
+          description: "Unexpected data format from server",
+          variant: "destructive",
+        })
       }
     } catch (error: any) {
-      console.error('Quiz fetch error:', error)
+      console.error('❌ Quiz fetch error:', error)
+      console.error('❌ Error response:', error.response)
       setQuizzes([])
       toast({
         title: "Error",
-        description: "Failed to load quizzes",
+        description: error.response?.data?.detail || "Failed to load quizzes",
         variant: "destructive",
       })
     } finally {
@@ -194,7 +221,7 @@ export function QuizListPage() {
                         </div>
                       </div>
                       <Button
-                        onClick={() => router.push(`/student/quiz/${quiz.id}`)}
+                        onClick={() => router.push(`/student/quiz-center/${quiz.id}`)}
                         className="w-full"
                       >
                         <Play className="w-4 h-4 mr-2" />
