@@ -214,21 +214,22 @@ npm run test:coverage
 
 ## Team
 
-| Name | Role | GitHub | LinkedIn |
-|------|------|--------|----------|
-| R Samritha Shree | Full-Stack Developer & Team Lead | [@SamrithaShree](https://github.com/SamrithaShree) | [Profile](#) |
-| RD Shreya Lakshmi| Backend Developer | [@itzShreya07](https://github.com/itzShreya07) | [Profile](#) |
-| A Priyankaa | ML Engineer | [@priyankaa1816](https://github.com/priyankaa1816) | [Profile](#) |
-| P Shreya | Frontend Developer | [@shreya21p](https://github.com/shreya21p) | [Profile](#) |
+| Name | GitHub |
+|------|--------|
+| R Samritha Shree | [@SamrithaShree](https://github.com/SamrithaShree) |
+| RD Shreya Lakshmi| [@itzShreya07](https://github.com/itzShreya07) |
+| A Priyankaa | [@priyankaa1816](https://github.com/priyankaa1816) |
+| P Shreya | [@shreya21p](https://github.com/shreya21p) |
+| Deepika |
+| Kruthika|
 
 ---
 
 ## Hackathon Journey
 
-**Smart India Hackathon 2025** | Problem Statement ID: [SIH-XXXX]
+**Smart India Hackathon 2025** | Problem Statement ID: [SIH-2025]
 
-- Internal Hackathon - **1st Place**
-- Grand Finale - **Qualified**
+- Internal Hackathon - **Qualified**
 - Solution addresses real-world educational inequality
 - Scalable to 100,000+ students across India
 
